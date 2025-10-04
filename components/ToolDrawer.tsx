@@ -1,16 +1,42 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon } from "lucide-react";
 import { ToolKey } from "../lib/types";
+
+type TreeItem = { path?: string; type?: string; sha?: string };
 
 type Props = {
   tool: ToolKey;
   setTool: (t: ToolKey) => void;
   branch: string;
   testOutput: string;
+  onSelectPath?: (p: string) => void;
 };
 
-export default function ToolDrawer({ tool, setTool, branch, testOutput }: Props) {
+export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelectPath }: Props) {
+  const [tree, setTree] = useState<TreeItem[]>([]);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    if (tool !== "files") return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/github/files?branch=${encodeURIComponent(branch)}`);
+        const data = await res.json();
+        setTree(Array.isArray(data.tree) ? data.tree : []);
+      } catch {
+        setTree([]);
+      }
+    })();
+  }, [tool, branch]);
+
+  const filtered = useMemo(() => {
+    if (!q.trim()) return tree;
+    const qq = q.toLowerCase();
+    return tree.filter(t => (t.path || "").toLowerCase().includes(qq));
+  }, [tree, q]);
+
   return (
     <>
       <nav className="tool-nav" aria-label="Tools">
@@ -50,6 +76,8 @@ export default function ToolDrawer({ tool, setTool, branch, testOutput }: Props)
               <h4>File Explorer</h4>
               <input
                 type="text"
+                value={q}
+                onChange={e => setQ(e.target.value)}
                 placeholder="Search repository..."
                 style={{
                   width: "100%",
@@ -62,20 +90,20 @@ export default function ToolDrawer({ tool, setTool, branch, testOutput }: Props)
                 }}
               />
             </div>
-            <div className="tool-section file-list">
-apps/
-  api/
-    src/
-      modules/
-        metrics/
-          metrics.controller.ts
-  web/
-    src/
-      lib/
-        api.ts
-prometheus/
-  prometheus.yml
-README.md
+            <div className="tool-section file-list" style={{ maxHeight: "60vh", overflow: "auto" }}>
+              {filtered.length === 0 ? (
+                <div className="muted">No files</div>
+              ) : (
+                filtered.map((t, i) => (
+                  <div
+                    key={`tree-${i}`}
+                    style={{ padding: "4px 6px", cursor: "pointer" }}
+                    onClick={() => t.path && onSelectPath?.(t.path)}
+                  >
+                    {t.path}
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}

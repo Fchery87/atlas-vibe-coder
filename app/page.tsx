@@ -101,7 +101,7 @@ const initialLogs: LogEntry[] = [
 
 export default function Page() {
   const [branch] = useState("feature/auth-api-fix");
-  const [filePath] = useState("apps/api/src/modules/metrics/metrics.controller.ts");
+  const [selectedPath, setSelectedPath] = useState<string>("apps/api/src/modules/metrics/metrics.controller.ts");
 
   const [mode, setMode] = useState<"quick" | "think" | "run">("quick");
   const [tab, setTab] = useState<"diff" | "source" | "tests">("diff");
@@ -112,8 +112,8 @@ export default function Page() {
   const [tool, setTool] = useState<ToolKey>("activity");
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [prNumber, setPrNumber] = useState<number | null>(null);
+  const [headSha, setHeadSha] = useState<string | null>(null);
 
-  // WebSocket log streaming (if NEXT_PUBLIC_WS_URL defined)
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_WS_URL;
     if (!url) return;
@@ -128,11 +128,9 @@ export default function Page() {
       };
       return () => ws.close();
     } catch {
-      // ignore
     }
   }, []);
 
-  // Load diff from GitHub via API route (fallback to sample patch)
   useEffect(() => {
     async function load() {
       try {
@@ -140,17 +138,21 @@ export default function Page() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const files: DiffFile[] = data.files || [];
+        setHeadSha(data.headSha || null);
         if (!files.length) {
-          setDiffFiles([{ filename: filePath, status: "modified", additions: 2, deletions: 2, changes: 4, patch: fallbackPatch }]);
+          setDiffFiles([{ filename: selectedPath, status: "modified", additions: 2, deletions: 2, changes: 4, patch: fallbackPatch }]);
         } else {
           setDiffFiles(files);
+          if (!files.find(f => f.filename === selectedPath)) {
+            setSelectedPath(files[0].filename);
+          }
         }
       } catch {
-        setDiffFiles([{ filename: filePath, status: "modified", additions: 2, deletions: 2, changes: 4, patch: fallbackPatch }]);
+        setDiffFiles([{ filename: selectedPath, status: "modified", additions: 2, deletions: 2, changes: 4, patch: fallbackPatch }]);
       }
     }
     load();
-  }, [branch, filePath]);
+  }, [branch]);
 
   function handleModeAction(nextMode: "quick" | "think" | "run") {
     setMode(nextMode);
@@ -190,16 +192,23 @@ export default function Page() {
     }
   }
 
-  function onAddComment(idx: number, text: string) {
-    setComments(prev => [...prev, { lineIndex: idx, text }]);
-    setLogs(prev => [...prev, { kind: "user", title: "User Review", items: [`Comment on line ${idx + 1}`], text, ts: nowTs() }]);
+  function onAddComment(payload: { index: number; text: string; line: number; side: "LEFT" | "RIGHT"; path: string }) {
+    const { index, text } = payload;
+    setComments(prev => [...prev, { lineIndex: index, text }]);
+    setLogs(prev => [...prev, { kind: "user", title: "User Review", items: [`Comment on line ${index + 1}`], text, ts: nowTs() }]);
 
-    // Attempt to sync comment to GitHub if PR number available
-    if (prNumber) {
+    if (prNumber && headSha) {
       fetch("/api/github/comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pull_number: prNumber, body: text })
+        body: JSON.stringify({
+          pull_number: prNumber,
+          comment_body: text,
+          path: payload.path,
+          commit_id: headSha,
+          line: payload.line,
+          side: payload.side
+        })
       }).catch(() => {});
     }
   }
@@ -222,7 +231,6 @@ export default function Page() {
 
   return (
     <div className="app-shell">
-      {/* Left Panel */}
       <aside className="panel-left">
         <header className="left-header">
           <div className="task-title">
@@ -254,7 +262,6 @@ export default function Page() {
         />
       </aside>
 
-      {/* Center Panel */}
       <section className="panel-center">
         <div className="code-header">
           <div className="tabs" role="tablist" aria-label="Editor Tabs">
@@ -270,12 +277,20 @@ export default function Page() {
           </div>
           <div className="file-path">
             <FileCode2 className="icon" />
-            <span>{filePath}</span>
+            <span>{selectedPath}</span>
           </div>
         </div>
 
         <div className="editor-viewport">
-          {tab === "diff" && <DiffViewer filePath={filePath} diffFiles={diffFiles} comments={comments} onAddComment={onAddComment} />}
+          {tab === "diff" && (
+            <DiffViewer
+              selectedPath={selectedPath}
+              diffFiles={diffFiles}
+              comments={comments}
+              onAddComment={onAddComment}
+              onSelectPath={setSelectedPath}
+            />
+          )}
 
           {tab === "source" && (
             <pre className="view view-source">
@@ -292,9 +307,8 @@ export default function Page() {
         </div>
       </section>
 
-      <ToolDrawer tool={tool} setTool={setTool} branch={branch} testOutput={testOutputText} />
+      <ToolDrawer tool={tool} setTool={setTool} branch={branch} testOutput={testOutputText} onSelectPath={setSelectedPath} />
 
-      {/* Bottom Input Bar */}
       <div className="bottom-bar">
         <div className="input-area">
           <textarea value={newInstruction} onChange={e => setNewInstruction(e.target.value)} placeholder="Type, paste or import your task here..." />

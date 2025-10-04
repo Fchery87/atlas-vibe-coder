@@ -6,16 +6,17 @@ import { Comment, DiffFile } from "../lib/types";
 
 type DiffLine = {
   type: "context" | "added" | "removed";
-  old: number | "" ;
-  new: number | "" ;
+  old: number | "";
+  new: number | "";
   text: string;
 };
 
 type Props = {
-  filePath?: string;
+  selectedPath?: string;
   diffFiles: DiffFile[];
   comments: Comment[];
-  onAddComment: (lineIndex: number, text: string) => void;
+  onAddComment: (payload: { index: number; text: string; line: number; side: "LEFT" | "RIGHT"; path: string }) => void;
+  onSelectPath?: (path: string) => void;
 };
 
 function parseUnifiedPatch(patch: string | null | undefined): DiffLine[] {
@@ -53,31 +54,56 @@ function parseUnifiedPatch(patch: string | null | undefined): DiffLine[] {
   return result;
 }
 
-export default function DiffViewer({ filePath, diffFiles, comments, onAddComment }: Props) {
+export default function DiffViewer({ selectedPath, diffFiles, comments, onAddComment, onSelectPath }: Props) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeFile: DiffFile | undefined = useMemo(() => {
     if (!diffFiles?.length) return undefined;
-    if (filePath) {
-      const found = diffFiles.find(f => f.filename === filePath);
+    if (selectedPath) {
+      const found = diffFiles.find(f => f.filename === selectedPath);
       if (found) return found;
     }
     return diffFiles[0];
-  }, [diffFiles, filePath]);
+  }, [diffFiles, selectedPath]);
 
   const lines = useMemo(() => parseUnifiedPatch(activeFile?.patch || null), [activeFile]);
 
   return (
     <div className="view view-diff" aria-live="polite">
-      <div className="diff-header">
+      <div className="diff-header" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="diff-file">
-          <GitCommit className="icon" /> {activeFile?.filename || filePath || "Diff"}
+          <GitCommit className="icon" /> {activeFile?.filename || selectedPath || "Diff"}
         </div>
+        {diffFiles.length > 1 && (
+          <select
+            value={activeFile?.filename || selectedPath || ""}
+            onChange={e => onSelectPath?.(e.target.value)}
+            style={{
+              marginLeft: 8,
+              height: 30,
+              borderRadius: 8,
+              border: "1px solid #1f2937",
+              background: "#0f1421",
+              color: "#e5e7eb",
+              padding: "0 8px"
+            }}
+          >
+            {diffFiles.map(df => (
+              <option key={df.filename} value={df.filename}>
+                {df.filename}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="diff-lines">
         {lines.map((ln, idx) => {
           const thread = comments.filter(c => c.lineIndex === idx);
+          const path = activeFile?.filename || selectedPath || "";
+          const side: "LEFT" | "RIGHT" = ln.type === "removed" ? "LEFT" : "RIGHT";
+          const line = side === "RIGHT" ? (typeof ln.new === "number" ? ln.new : 0) : (typeof ln.old === "number" ? ln.old : 0);
+
           return (
             <div key={`diff-${idx}`}>
               <div className={`diff-line ${ln.type}`} data-index={idx}>
@@ -127,7 +153,7 @@ export default function DiffViewer({ filePath, diffFiles, comments, onAddComment
                       onClick={() => {
                         const text = textareaRef.current?.value || "";
                         if (!text.trim()) return;
-                        onAddComment(idx, text.trim());
+                        onAddComment({ index: idx, text: text.trim(), line, side, path });
                         setOpenIdx(null);
                       }}
                     >

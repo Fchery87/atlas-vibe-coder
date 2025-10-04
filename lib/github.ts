@@ -30,7 +30,7 @@ export async function compareBranches(octokit: Octokit, owner: string, repo: str
     repo,
     basehead: `${base}...${head}`
   });
-  return data.files?.map(f => ({
+  const files = data.files?.map(f => ({
     filename: f.filename,
     status: f.status,
     additions: f.additions,
@@ -38,6 +38,8 @@ export async function compareBranches(octokit: Octokit, owner: string, repo: str
     changes: f.changes,
     patch: f.patch ?? null
   })) || [];
+  const headSha = data.commits?.length ? data.commits[data.commits.length - 1]?.sha : undefined;
+  return { files, headSha };
 }
 
 export async function createPullRequest(
@@ -86,7 +88,6 @@ export async function addCommentToPR(
     });
     return data;
   }
-  // Fallback: add a regular issue comment to the PR
   const { data } = await octokit.issues.createComment({
     owner,
     repo,

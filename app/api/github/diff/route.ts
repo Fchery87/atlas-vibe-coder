@@ -10,8 +10,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing head query param" }, { status: 400 });
     }
     const octokit = getOctokit();
-    const files = await compareBranches(octokit, owner, repo, base, head);
-    return NextResponse.json({ base, head, files });
+    const { files, headSha } = await compareBranches(octokit, owner, repo, base, head);
+    return NextResponse.json({ base, head, headSha, files });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
