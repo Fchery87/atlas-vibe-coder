@@ -25,6 +25,10 @@ const state = {
     { id: 101, author: "reviewer-1", body: "Can we rename X-Request-ID to X-Request-Id consistently?", createdAt: new Date().toISOString(), url: "#" },
     { id: 102, author: "teammate-2", body: "Looks good. Please confirm the JWT attach logic for subrequests.", createdAt: new Date().toISOString(), url: "#" }
   ],
+  reviewComments: [
+    { id: 201, author: "reviewer-1", body: "Nit: Use 'X-Request-Id' header casing.", createdAt: new Date().toISOString(), url: "#", path: "apps/api/src/modules/metrics/metrics.controller.ts", line: 13, side: "RIGHT" },
+    { id: 202, author: "reviewer-2", body: "Delete 'host' header rather than overriding.", createdAt: new Date().toISOString(), url: "#", path: "apps/api/src/modules/metrics/metrics.controller.ts", line: 27, side: "RIGHT" }
+  ],
   // Status filters for Changed Files
   showAdded: true,
   showModified: true,
@@ -258,7 +262,18 @@ function renderDiff() {
 
     // If there are saved comments for this line, render a condensed thread below
     const thread = state.comments.filter(c => c.lineIndex === idx);
-    if (thread.length) {
+
+    // Include simulated review comments anchored by right-side line number
+    const revThread = (state.reviewComments || []).filter(rc => {
+      const samePath = rc.path === state.filePath;
+      const rightSide = !rc.side || rc.side === "RIGHT";
+      const sameLine = typeof ln.new === "number" && rc.line === ln.new;
+      return samePath && rightSide && sameLine;
+    }).map(rc => ({ text: `[Review] ${rc.body}` }));
+
+    const allThread = [...thread, ...revThread];
+
+    if (allThread.length) {
       const threadEl = document.createElement("div");
       threadEl.style.background = "rgba(124,58,237,0.08)";
       threadEl.style.borderTop = "1px dashed #334155";
@@ -266,7 +281,7 @@ function renderDiff() {
       threadEl.style.padding = "8px 12px";
       threadEl.style.fontFamily = "var(--sans)";
       threadEl.style.color = "#cbd5e1";
-      threadEl.innerHTML = `<strong>Comments:</strong><br>${thread.map(t => escapeHtml(t.text)).join("<br>")}`;
+      threadEl.innerHTML = `<strong>Comments:</strong><br>${allThread.map(t => escapeHtml(t.text)).join("<br>")}`;
       linesEl.appendChild(threadEl);
     }
   });
@@ -476,8 +491,10 @@ function statusSymbol(status) {
 function renderCenterSidebar() {
   const filesList = document.getElementById("changedFilesList");
   const prList = document.getElementById("prCommentsList");
+  const reviewList = document.getElementById("reviewCommentsList");
   const filesFilter = (document.getElementById("filesFilter") || { value: "" }).value.toLowerCase?.() || "";
   const commentsFilter = (document.getElementById("commentsFilter") || { value: "" }).value.toLowerCase?.() || "";
+  const reviewFilter = (document.getElementById("reviewCommentsFilter") || { value: "" }).value.toLowerCase?.() || "";
 
   if (filesList) {
     filesList.innerHTML = "";
@@ -547,6 +564,55 @@ function renderCenterSidebar() {
       });
     }
   }
+
+  if (reviewList) {
+    reviewList.innerHTML = "";
+    const rcItems = (state.reviewComments || []).filter(r =>
+      !reviewFilter ||
+      (r.body || "").toLowerCase().includes(reviewFilter) ||
+      (r.author || "").toLowerCase().includes(reviewFilter) ||
+      (r.path || "").toLowerCase().includes(reviewFilter) ||
+      String(r.line || "").includes(reviewFilter)
+    );
+    if (rcItems.length === 0) {
+      const div = document.createElement("div");
+      div.className = "muted";
+      div.textContent = "No review comments yet";
+      reviewList.appendChild(div);
+    } else {
+      rcItems.forEach(r => {
+        const card = document.createElement("div");
+        card.className = "comment-card";
+        const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+        card.innerHTML = `
+          <div class="comment-meta">
+            <span class="author">${escapeHtml(r.author || "Reviewer")}</span>
+            <span>
+              ${when ? `<span class="time" style="margin-right:8px;">${escapeHtml(when)}</span>` : ""}
+              <button class="btn" data-open-path="${escapeHtml(r.path)}" style="height:22px;padding:0 8px;">View file</button>
+            </span>
+          </div>
+          <div class="comment-body">
+            <div class="muted" style="font-size:12px;margin-bottom:4px;">${escapeHtml(r.path)}:${escapeHtml(String(r.line))} ${r.side ? `(${escapeHtml(r.side)})` : ""}</div>
+            ${escapeHtml(r.body || "")}
+          </div>
+        `;
+        reviewList.appendChild(card);
+      });
+
+      // Bind file open buttons
+      reviewList.querySelectorAll("button[data-open-path]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const p = btn.getAttribute("data-open-path");
+          if (!p) return;
+          state.filePath = p;
+          const fp = document.getElementById("filePath");
+          if (fp) fp.textContent = state.filePath;
+          renderDiff();
+        });
+      });
+    }
+  }
 }
 
 function setupCenterSidebarHandlers() {
@@ -556,19 +622,39 @@ function setupCenterSidebarHandlers() {
       refreshRemote();
     });
   }
+  const pauseBtn = document.getElementById("pauseAutoBtn");
+  if (pauseBtn) {
+    const updateLabel = () => {
+      pauseBtn.textContent = state.autoRefreshEnabled ? "Pause" : "Resume";
+      pauseBtn.title = state.autoRefreshEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh";
+    };
+    updateLabel();
+    pauseBtn.addEventListener("click", () => {
+      state.autoRefreshEnabled = !state.autoRefreshEnabled;
+      try { localStorage.setItem("atlas_auto_refresh_enabled", state.autoRefreshEnabled ? "1" : "0"); } catch {}
+      applyAutoRefresh();
+      updateLabel();
+    });
+  }
   const filesFilter = document.getElementById("filesFilter");
   const commentsFilter = document.getElementById("commentsFilter");
+  const reviewFilter = document.getElementById("reviewCommentsFilter");
   filesFilter && filesFilter.addEventListener("input", renderCenterSidebar);
   commentsFilter && commentsFilter.addEventListener("input", renderCenterSidebar);
+  reviewFilter && reviewFilter.addEventListener("input", renderCenterSidebar);
 }
 
 // Simulated remote refresh (just re-renders and appends a tick to first comment)
+function updateLastRefreshed() {
+  const el = document.getElementById("lastRefreshed");
+  if (el) el.textContent = nowTs();
+}
+
 function refreshRemote() {
   if (state.prIssueComments.length) {
     state.prIssueComments[0].body = `${state.prIssueComments[0].body} · refreshed ${nowTs()}`;
   }
-  renderCenterSidebar();
-}
+ }
 
 // Auto-refresh configuration
 function applyAutoRefresh() {
@@ -878,6 +964,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updateViews();
   applyAutoRefresh();
   updateChangedFilesBadge();
+  updateLastRefreshed();
 
   const prBtn = document.getElementById("createPrBtn");
   prBtn && prBtn.addEventListener("click", () => {

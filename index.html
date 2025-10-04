@@ -66,12 +66,24 @@
         <!-- PR Comments sidebar -->
         <aside class="center-sidebar" aria-label="PR comments">
           <div class="sidebar-section">
-            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <span>PR Comments</span>
-              <button id="refreshPRCommentsBtn" class="btn" title="Refresh comments">Refresh</button>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <span class="muted" style="font-size:11px;">Last refreshed: <span id="lastRefreshed">-</span></span>
+                <button id="refreshPRCommentsBtn" class="btn" title="Refresh comments">Refresh</button>
+                <button id="pauseAutoBtn" class="btn" title="Pause/Resume Auto-refresh">Pause</button>
+              </div>
             </div>
             <input id="commentsFilter" placeholder="Filter comments…" />
             <div id="prCommentsList" class="comments-list">
+              <!-- populated by script -->
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-title">Review Comments</div>
+            <input id="reviewCommentsFilter" placeholder="Filter review comments…" />
+            <div id="reviewCommentsList" class="comments-list">
               <!-- populated by script -->
             </div>
           </div>
