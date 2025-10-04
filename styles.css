@@ -515,11 +515,29 @@ body {
   display: grid;
   place-items: center;
   cursor: pointer;
+  position: relative;
 }
 .tool-btn.active,
 .tool-btn:hover {
   color: #e5e7eb;
   border-color: #334155;
+}
+
+.tool-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(124,58,237,0.95);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  border: 1px solid var(--border);
+  pointer-events: none;
 }
 
 /* Tool Drawer (right side) */

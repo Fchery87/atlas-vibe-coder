@@ -68,6 +68,7 @@ export default function ToolDrawer({
         </button>
         <button className={`tool-btn ${tool === "changed" ? "active" : ""}`} title="Changed Files" onClick={() => setTool("changed")}>
           <FileDiff />
+          {diffFiles?.length ? <span className="tool-badge">{diffFiles.length}</span> : null}
         </button>
         <button className={`tool-btn ${tool === "files" ? "active" : ""}`} title="File Explorer" onClick={() => setTool("files")}>
           <Folder />

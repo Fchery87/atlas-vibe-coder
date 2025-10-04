@@ -578,6 +578,14 @@ function applyAutoRefresh() {
 }
 
 // Tool drawer
+function updateChangedFilesBadge() {
+  const badge = document.getElementById("changedFilesBadge");
+  if (!badge) return;
+  const n = (state.diffFiles || []).length || 0;
+  badge.textContent = String(n);
+  badge.style.display = n > 0 ? "inline-block" : "none";
+}
+
 function setupToolDrawer() {
   const drawer = document.getElementById("toolDrawer");
   const buttons = document.querySelectorAll(".tool-btn");
@@ -756,6 +764,7 @@ ${testOutputText}</pre>
         drawer.classList.remove("hidden");
       }
       if (window.lucide) window.lucide.createIcons();
+      updateChangedFilesBadge();
     });
   });
 }
@@ -799,6 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupToolDrawer();
   updateViews();
   applyAutoRefresh();
+  updateChangedFilesBadge();
 
   const prBtn = document.getElementById("createPrBtn");
   prBtn && prBtn.addEventListener("click", () => {
