@@ -26,6 +26,7 @@ export type PrIssueComment = {
   author?: string;
   body: string;
   createdAt?: string;
+  url?: string;
 };
 
 export type ToolKey = "activity" | "files" | "terminal" | "integrations" | "settings" | null;

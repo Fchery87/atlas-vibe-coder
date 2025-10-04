@@ -200,80 +200,92 @@ export default function Page() {
     }
   }, [prNumber, selectedPath]);
 
-  // Pull GitHub and JIRA comments to sync
-  useEffect(() => {
-    async function syncRemote() {
-      if (!prNumber) return;
-      try {
-        const res = await fetch(`/api/github/comments?pull_number=${prNumber}`);
-        if (res.ok) {
-          const data = await res.json();
-          setHeadSha(data.head_sha || headSha);
+  // Unified refresh function for PR (GitHub) + JIRA comments
+  const refreshRemote = async () => {
+    if (!prNumber) return;
+    try {
+      const res = await fetch(`/api/github/comments?pull_number=${prNumber}`);
+      if (res.ok) {
+        const data = await res.json();
+        setHeadSha(data.head_sha || headSha);
 
-          const reviewComments = Array.isArray(data.review_comments) ? data.review_comments : [];
-          // Map anchored review comments to local indices
-          const mapped: Comment[] = [];
-          for (const rc of reviewComments) {
-            const path = rc.path as string | undefined;
-            const side = (rc.side as "LEFT" | "RIGHT") || "RIGHT";
-            const line = (rc.line as number | undefined) || undefined;
-            const body = (rc.body as string) || "";
-            if (path === selectedPath && typeof line === "number") {
-              const idx = mapLineToIndex(lines, side, line);
-              if (idx !== null) {
-                mapped.push({ lineIndex: idx, text: body });
-              }
+        const reviewComments = Array.isArray(data.review_comments) ? data.review_comments : [];
+        // Map anchored review comments to local indices
+        const mapped: Comment[] = [];
+        for (const rc of reviewComments) {
+          const path = rc.path as string | undefined;
+          const side = (rc.side as "LEFT" | "RIGHT") || "RIGHT";
+          const line = (rc.line as number | undefined) || undefined;
+          const body = (rc.body as string) || "";
+          if (path === selectedPath && typeof line === "number") {
+            const idx = mapLineToIndex(lines, side, line);
+            if (idx !== null) {
+              mapped.push({ lineIndex: idx, text: body });
             }
           }
-          // Merge with existing (local)
-          setComments(prev => {
-            const merged = [...prev, ...mapped];
-            // Dedup by text+lineIndex
-            const seen = new Set<string>();
-            return merged.filter(c => {
-              const k = `${c.lineIndex}|${c.text}`;
-              if (seen.has(k)) return false;
-              seen.add(k);
-              return true;
-            });
+        }
+        // Merge with existing (local)
+        setComments(prev => {
+          const merged = [...prev, ...mapped];
+          const seen = new Set<string>();
+          return merged.filter(c => {
+            const k = `${c.lineIndex}|${c.text}`;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
           });
+        });
 
-          // PR issue comments (non-anchored) for sidebar
-          const ics = Array.isArray(data.issue_comments) ? data.issue_comments : [];
-          const simplified: PrIssueComment[] = ics.map((c: any) => ({
-            id: c.id,
-            author: c.user?.login || c.user?.name,
-            body: c.body || "",
-            createdAt: c.created_at || c.updated_at
-          }));
-          setPrIssueComments(simplified);
+        // PR issue comments (non-anchored) for sidebar
+        const ics = Array.isArray(data.issue_comments) ? data.issue_comments : [];
+        const simplified: PrIssueComment[] = ics.map((c: any) => ({
+          id: c.id,
+          author: c.user?.login || c.user?.name,
+          body: c.body || "",
+          createdAt: c.created_at || c.updated_at,
+          url: c.html_url || c.url
+        }));
+        setPrIssueComments(simplified);
+      }
+    } catch {
+      // ignore
+    }
+
+    // JIRA comments into log (optional)
+    const issueKey = jiraIssueKey;
+    if (issueKey) {
+      try {
+        const jr = await fetch(`/api/jira/comment?issueKey=${encodeURIComponent(issueKey)}`);
+        if (jr.ok) {
+          const jd = await jr.json();
+          const comments = Array.isArray(jd.comments) ? jd.comments : [];
+          for (const c of comments) {
+            if (c.body_text) {
+              setLogs(prev => [...prev, { kind: "user", title: "JIRA", text: c.body_text, ts: nowTs() }]);
+            }
+          }
         }
       } catch {
         // ignore
       }
-
-      // JIRA comments into log (optional)
-      const issueKey = jiraIssueKey;
-      if (issueKey) {
-        try {
-          const jr = await fetch(`/api/jira/comment?issueKey=${encodeURIComponent(issueKey)}`);
-          if (jr.ok) {
-            const jd = await jr.json();
-            const comments = Array.isArray(jd.comments) ? jd.comments : [];
-            for (const c of comments) {
-              if (c.body_text) {
-                setLogs(prev => [...prev, { kind: "user", title: "JIRA", text: c.body_text, ts: nowTs() }]);
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
     }
-    syncRemote();
+  };
+
+  // Initial sync + refresh when dependencies change
+  useEffect(() => {
+    refreshRemote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prNumber, selectedPath, lines.length, jiraIssueKey]);
+
+  // Auto-poll every 30s while PR is present
+  useEffect(() => {
+    if (!prNumber) return;
+    const id = setInterval(() => {
+      refreshRemote();
+    }, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prNumber, selectedPath, jiraIssueKey]);
 
   // Persist comments to localStorage on change
   useEffect(() => {
@@ -439,6 +451,7 @@ export default function Page() {
             selectedPath={selectedPath}
             onSelectPath={setSelectedPath}
             issueComments={prIssueComments}
+            onRefresh={refreshRemote}
           />
           <div className="center-content">
             <div className="editor-viewport">
@@ -476,11 +489,16 @@ export default function Page() {
         testOutput={testOutputText}
         onSelectPath={setSelectedPath}
         jiraIssueKey={jiraIssueKey}
-        set>
+        setJiraIssueKey={setJiraIssueKey}
+      />
 
       <div className="bottom-bar">
         <div className="input-area">
-          <textarea value={newInstruction} onChange={e => setNewInstruction(e.target.value)} placeholder="Type, paste or import your task here..." />
+          <textarea
+            value={newInstruction}
+            onChange={e => setNewInstruction(e.target.value)}
+            placeholder="Type, paste or import your task here..."
+          />
         </div>
         <div className="controls">
           <button className={`mode-btn ${mode === "quick" ? "primary" : ""}`} onClick={() => handleModeAction("quick")}>
