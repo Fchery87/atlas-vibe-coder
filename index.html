@@ -63,23 +63,27 @@
       </div>
 
       <div class="center-body">
-        <!-- Changed Files + PR Comments sidebar -->
-        <aside class="center-sidebar" aria-label="Changed files and PR comments">
+        <!-- PR Comments sidebar -->
+        <aside class="center-sidebar" aria-label="PR comments">
           <div class="sidebar-section">
-            <div class="section-title">Changed Files</div>
-            <input id="filesFilter" placeholder="Filter files…" />
-            <div id="changedFilesList" class="files-list">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span>PR Comments</span>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <span class="muted" style="font-size:11px;">Last refreshed: <span id="lastRefreshed">-</span></span>
+                <button id="refreshPRCommentsBtn" class="btn" title="Refresh comments">Refresh</button>
+                <button id="pauseAutoBtn" class="btn" title="Pause/Resume Auto-refresh">Pause</button>
+              </div>
+            </div>
+            <input id="commentsFilter" placeholder="Filter comments…" />
+            <div id="prCommentsList" class="comments-list">
               <!-- populated by script -->
             </div>
           </div>
 
           <div class="sidebar-section">
-            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-              <span>PR Comments</span>
-              <button id="refreshPRCommentsBtn" class="btn" title="Refresh comments">Refresh</button>
-            </div>
-            <input id="commentsFilter" placeholder="Filter comments…" />
-            <div id="prCommentsList" class="comments-list">
+            <div class="section-title">Review Comments</div>
+            <input id="reviewCommentsFilter" placeholder="Filter review comments…" />
+            <div id="reviewCommentsList" class="comments-list">
               <!-- populated by script -->
             </div>
           </div>
@@ -108,6 +112,10 @@
     <nav class="tool-nav" aria-label="Tools">
       <button class="tool-btn active" data-tool="activity" title="Activity Log">
         <i data-lucide="list"></i>
+      </button>
+      <button class="tool-btn" data-tool="changed" title="Changed Files">
+        <i data-lucide="file-diff"></i>
+        <span id="changedFilesBadge" class="tool-badge" style="display:none">0</span>
       </button>
       <button class="tool-btn" data-tool="files" title="File Explorer">
         <i data-lucide="folder"></i>

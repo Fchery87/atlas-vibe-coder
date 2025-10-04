@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GitBranch, GitPullRequest, FileCode2, Mic, Globe, Code as CodeIcon } from "lucide-react";
 import AutonomousLog from "../components/AutonomousLog";
 import DiffViewer from "../components/DiffViewer";
 import ToolDrawer from "../components/ToolDrawer";
 import CenterSidebar from "../components/CenterSidebar";
-import type { Comment, DiffFile, LogEntry, ToolKey, PrIssueComment } from "../lib/types";
+import type { Comment, DiffFile, LogEntry, ToolKey, PrIssueComment, ReviewComment } from "../lib/types";
 import { parseUnifiedPatch, mapLineToIndex } from "../lib/diff";
 
 function nowTs() {
@@ -108,6 +108,7 @@ function lsKey(pr: number | null, path: string) {
 export default function Page() {
   const [branch] = useState("feature/auth-api-fix");
   const [selectedPath, setSelectedPath] = useState<string>("apps/api/src/modules/metrics/metrics.controller.ts");
+  const seededReviewRef = useRef<Record<string, boolean>>({});
 
   const [mode, setMode] = useState<"quick" | "think" | "run">("quick");
   const [tab, setTab] = useState<"diff" | "source" | "tests">("diff");
@@ -120,6 +121,8 @@ export default function Page() {
   const [prNumber, setPrNumber] = useState<number | null>(null);
   const [headSha, setHeadSha] = useState<string | null>(null);
   const [prIssueComments, setPrIssueComments] = useState<PrIssueComment[]>([]);
+  const [reviewComments, setReviewComments] = useState<ReviewComment[]>([]);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const [jiraIssueKey, setJiraIssueKey] = useState<string>("");
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(true);
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(30);
@@ -130,6 +133,68 @@ export default function Page() {
     return f?.patch || fallbackPatch;
   }, [diffFiles, selectedPath]);
   const lines = useMemo(() => parseUnifiedPatch(selectedPatch), [selectedPatch]);
+
+  // Seed sample review comments (simulated) when no PR yet
+  useEffect(() => {
+    if (prNumber) return;
+    if (!lines.length) return;
+    const key = selectedPath || "default";
+    if (seededReviewRef.current[key]) return;
+
+    const samples: ReviewComment[] = [
+      {
+        id: 9001,
+        author: "reviewer-1",
+        body: "Nit: Use consistent header casing 'X-Request-Id'.",
+        createdAt: new Date().toISOString(),
+        url: "#",
+        path: key,
+        line: 13,
+        side: "RIGHT"
+      },
+      {
+        id: 9002,
+        author: "reviewer-2",
+        body: "Consider removing 'host' header instead of overriding.",
+        createdAt: new Date().toISOString(),
+        url: "#",
+        path: key,
+        line: 27,
+        side: "RIGHT"
+      }
+    ];
+
+    const mappedInline: Comment[] = [];
+    for (const s of samples) {
+      const idx = mapLineToIndex(lines, s.side || "RIGHT", s.line);
+      if (idx !== null) {
+        mappedInline.push({ lineIndex: idx, text: s.body });
+      }
+    }
+    if (mappedInline.length) {
+      setComments(prev => {
+        const merged = [...prev, ...mappedInline];
+        const seen = new Set<string>();
+        return merged.filter(c => {
+          const k = `${c.lineIndex}|${c.text}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+      });
+    }
+    setReviewComments(prev => {
+      // Merge unique by id
+      const existingIds = new Set(prev.map(p => p.id));
+      const merged = [...prev];
+      for (const s of samples) {
+        if (!existingIds.has(s.id)) merged.push(s);
+      }
+      return merged;
+    });
+
+    seededReviewRef.current[key] = true;
+  }, [lines.length, selectedPath, prNumber]);
 
   // WebSocket logs
   useEffect(() => {
@@ -233,10 +298,23 @@ export default function Page() {
         const data = await res.json();
         setHeadSha(data.head_sha || headSha);
 
-        const reviewComments = Array.isArray(data.review_comments) ? data.review_comments : [];
-        // Map anchored review comments to local indices
+        const rcArr = Array.isArray(data.review_comments) ? data.review_comments : [];
+        // Build list for sidebar
+        const rlist: ReviewComment[] = rcArr.map((rc: any) => ({
+          id: rc.id,
+          author: rc.user?.login || rc.user?.name,
+          body: rc.body || "",
+          createdAt: rc.created_at || rc.updated_at,
+          url: rc.html_url || rc.url,
+          path: rc.path,
+          line: rc.line,
+          side: (rc.side as "LEFT" | "RIGHT") || "RIGHT"
+        }));
+        setReviewComments(rlist);
+
+        // Map anchored review comments to inline indices for active file
         const mapped: Comment[] = [];
-        for (const rc of reviewComments) {
+        for (const rc of rcArr) {
           const path = rc.path as string | undefined;
           const side = (rc.side as "LEFT" | "RIGHT") || "RIGHT";
           const line = (rc.line as number | undefined) || undefined;
@@ -248,7 +326,7 @@ export default function Page() {
             }
           }
         }
-        // Merge with existing (local)
+        // Merge inline comments
         setComments(prev => {
           const merged = [...prev, ...mapped];
           const seen = new Set<string>();
@@ -270,6 +348,7 @@ export default function Page() {
           url: c.html_url || c.url
         }));
         setPrIssueComments(simplified);
+        setLastRefreshed(nowTs());
       }
     } catch {
       // ignore
@@ -472,11 +551,13 @@ export default function Page() {
 
         <div className="center-body">
           <CenterSidebar
-            files={diffFiles}
-            selectedPath={selectedPath}
-            onSelectPath={setSelectedPath}
             issueComments={prIssueComments}
+            reviewComments={reviewComments}
+            lastRefreshedTs={lastRefreshed}
+            autoRefreshEnabled={autoRefreshEnabled}
+            onToggleAuto={() => setAutoRefreshEnabled(v => !v)}
             onRefresh={() => { refreshRemote(); }}
+            onSelectPath={setSelectedPath}
           />
           <div className="center-content">
             <div className="editor-viewport">
@@ -513,6 +594,8 @@ export default function Page() {
         branch={branch}
         testOutput={testOutputText}
         onSelectPath={setSelectedPath}
+        selectedPath={selectedPath}
+        diffFiles={diffFiles}
         jiraIssueKey={jiraIssueKey}
         setJiraIssueKey={setJiraIssueKey}
         autoRefreshEnabled={autoRefreshEnabled}

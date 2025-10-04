@@ -29,4 +29,15 @@ export type PrIssueComment = {
   url?: string;
 };
 
-export type ToolKey = "activity" | "files" | "terminal" | "integrations" | "settings" | null;
+export type ReviewComment = {
+  id: number;
+  author?: string;
+  body: string;
+  createdAt?: string;
+  url?: string;
+  path: string;
+  line: number;
+  side?: "LEFT" | "RIGHT";
+};
+
+export type ToolKey = "activity" | "changed" | "files" | "terminal" | "integrations" | "settings" | null;

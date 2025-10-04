@@ -25,6 +25,14 @@ const state = {
     { id: 101, author: "reviewer-1", body: "Can we rename X-Request-ID to X-Request-Id consistently?", createdAt: new Date().toISOString(), url: "#" },
     { id: 102, author: "teammate-2", body: "Looks good. Please confirm the JWT attach logic for subrequests.", createdAt: new Date().toISOString(), url: "#" }
   ],
+  reviewComments: [
+    { id: 201, author: "reviewer-1", body: "Nit: Use 'X-Request-Id' header casing.", createdAt: new Date().toISOString(), url: "#", path: "apps/api/src/modules/metrics/metrics.controller.ts", line: 13, side: "RIGHT" },
+    { id: 202, author: "reviewer-2", body: "Delete 'host' header rather than overriding.", createdAt: new Date().toISOString(), url: "#", path: "apps/api/src/modules/metrics/metrics.controller.ts", line: 27, side: "RIGHT" }
+  ],
+  // Status filters for Changed Files
+  showAdded: true,
+  showModified: true,
+  showRemoved: true,
   jiraIssueKey: "",
   autoRefreshEnabled: true,
   refreshIntervalSec: 30,
@@ -254,7 +262,18 @@ function renderDiff() {
 
     // If there are saved comments for this line, render a condensed thread below
     const thread = state.comments.filter(c => c.lineIndex === idx);
-    if (thread.length) {
+
+    // Include simulated review comments anchored by right-side line number
+    const revThread = (state.reviewComments || []).filter(rc => {
+      const samePath = rc.path === state.filePath;
+      const rightSide = !rc.side || rc.side === "RIGHT";
+      const sameLine = typeof ln.new === "number" && rc.line === ln.new;
+      return samePath && rightSide && sameLine;
+    }).map(rc => ({ text: `[Review] ${rc.body}` }));
+
+    const allThread = [...thread, ...revThread];
+
+    if (allThread.length) {
       const threadEl = document.createElement("div");
       threadEl.style.background = "rgba(124,58,237,0.08)";
       threadEl.style.borderTop = "1px dashed #334155";
@@ -262,7 +281,7 @@ function renderDiff() {
       threadEl.style.padding = "8px 12px";
       threadEl.style.fontFamily = "var(--sans)";
       threadEl.style.color = "#cbd5e1";
-      threadEl.innerHTML = `<strong>Comments:</strong><br>${thread.map(t => escapeHtml(t.text)).join("<br>")}`;
+      threadEl.innerHTML = `<strong>Comments:</strong><br>${allThread.map(t => escapeHtml(t.text)).join("<br>")}`;
       linesEl.appendChild(threadEl);
     }
   });
@@ -472,8 +491,10 @@ function statusSymbol(status) {
 function renderCenterSidebar() {
   const filesList = document.getElementById("changedFilesList");
   const prList = document.getElementById("prCommentsList");
+  const reviewList = document.getElementById("reviewCommentsList");
   const filesFilter = (document.getElementById("filesFilter") || { value: "" }).value.toLowerCase?.() || "";
   const commentsFilter = (document.getElementById("commentsFilter") || { value: "" }).value.toLowerCase?.() || "";
+  const reviewFilter = (document.getElementById("reviewCommentsFilter") || { value: "" }).value.toLowerCase?.() || "";
 
   if (filesList) {
     filesList.innerHTML = "";
@@ -543,6 +564,55 @@ function renderCenterSidebar() {
       });
     }
   }
+
+  if (reviewList) {
+    reviewList.innerHTML = "";
+    const rcItems = (state.reviewComments || []).filter(r =>
+      !reviewFilter ||
+      (r.body || "").toLowerCase().includes(reviewFilter) ||
+      (r.author || "").toLowerCase().includes(reviewFilter) ||
+      (r.path || "").toLowerCase().includes(reviewFilter) ||
+      String(r.line || "").includes(reviewFilter)
+    );
+    if (rcItems.length === 0) {
+      const div = document.createElement("div");
+      div.className = "muted";
+      div.textContent = "No review comments yet";
+      reviewList.appendChild(div);
+    } else {
+      rcItems.forEach(r => {
+        const card = document.createElement("div");
+        card.className = "comment-card";
+        const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+        card.innerHTML = `
+          <div class="comment-meta">
+            <span class="author">${escapeHtml(r.author || "Reviewer")}</span>
+            <span>
+              ${when ? `<span class="time" style="margin-right:8px;">${escapeHtml(when)}</span>` : ""}
+              <button class="btn" data-open-path="${escapeHtml(r.path)}" style="height:22px;padding:0 8px;">View file</button>
+            </span>
+          </div>
+          <div class="comment-body">
+            <div class="muted" style="font-size:12px;margin-bottom:4px;">${escapeHtml(r.path)}:${escapeHtml(String(r.line))} ${r.side ? `(${escapeHtml(r.side)})` : ""}</div>
+            ${escapeHtml(r.body || "")}
+          </div>
+        `;
+        reviewList.appendChild(card);
+      });
+
+      // Bind file open buttons
+      reviewList.querySelectorAll("button[data-open-path]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const p = btn.getAttribute("data-open-path");
+          if (!p) return;
+          state.filePath = p;
+          const fp = document.getElementById("filePath");
+          if (fp) fp.textContent = state.filePath;
+          renderDiff();
+        });
+      });
+    }
+  }
 }
 
 function setupCenterSidebarHandlers() {
@@ -552,19 +622,39 @@ function setupCenterSidebarHandlers() {
       refreshRemote();
     });
   }
+  const pauseBtn = document.getElementById("pauseAutoBtn");
+  if (pauseBtn) {
+    const updateLabel = () => {
+      pauseBtn.textContent = state.autoRefreshEnabled ? "Pause" : "Resume";
+      pauseBtn.title = state.autoRefreshEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh";
+    };
+    updateLabel();
+    pauseBtn.addEventListener("click", () => {
+      state.autoRefreshEnabled = !state.autoRefreshEnabled;
+      try { localStorage.setItem("atlas_auto_refresh_enabled", state.autoRefreshEnabled ? "1" : "0"); } catch {}
+      applyAutoRefresh();
+      updateLabel();
+    });
+  }
   const filesFilter = document.getElementById("filesFilter");
   const commentsFilter = document.getElementById("commentsFilter");
+  const reviewFilter = document.getElementById("reviewCommentsFilter");
   filesFilter && filesFilter.addEventListener("input", renderCenterSidebar);
   commentsFilter && commentsFilter.addEventListener("input", renderCenterSidebar);
+  reviewFilter && reviewFilter.addEventListener("input", renderCenterSidebar);
 }
 
 // Simulated remote refresh (just re-renders and appends a tick to first comment)
+function updateLastRefreshed() {
+  const el = document.getElementById("lastRefreshed");
+  if (el) el.textContent = nowTs();
+}
+
 function refreshRemote() {
   if (state.prIssueComments.length) {
     state.prIssueComments[0].body = `${state.prIssueComments[0].body} · refreshed ${nowTs()}`;
   }
-  renderCenterSidebar();
-}
+ }
 
 // Auto-refresh configuration
 function applyAutoRefresh() {
@@ -578,6 +668,22 @@ function applyAutoRefresh() {
 }
 
 // Tool drawer
+function updateChangedFilesBadge() {
+  const badge = document.getElementById("changedFilesBadge");
+  if (!badge) return;
+  const n = (state.diffFiles || []).length || 0;
+  badge.textContent = String(n);
+  badge.style.display = n > 0 ? "inline-block" : "none";
+  // Variant by active status filters (only if exactly one is active)
+  const active = [state.showAdded, state.showModified, state.showRemoved].filter(Boolean).length;
+  badge.classList.remove("added", "modified", "removed");
+  if (active === 1) {
+    if (state.showAdded) badge.classList.add("added");
+    else if (state.showModified) badge.classList.add("modified");
+    else if (state.showRemoved) badge.classList.add("removed");
+  }
+}
+
 function setupToolDrawer() {
   const drawer = document.getElementById("toolDrawer");
   const buttons = document.querySelectorAll(".tool-btn");
@@ -597,6 +703,118 @@ function setupToolDrawer() {
             <div>${state.branch}</div>
           </div>
         `;
+        drawer.classList.remove("hidden");
+      } else if (tool === "changed") {
+        drawer.innerHTML = `
+          <div class="tool-section">
+            <h4>Changed Files</h4>
+            <input id="changedFilesFilter" type="text" placeholder="Filter files..." style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:8px;" />
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterAdded" type="checkbox" /> <span class="success">Added</span> <span class="muted" id="countAdded"></span>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterModified" type="checkbox" /> <span style="color: var(--accent)">Modified</span> <span class="muted" id="countModified"></span>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterRemoved" type="checkbox" /> <span class="error">Removed</span> <span class="muted" id="countRemoved"></span>
+              </label>
+            </div>
+          </div>
+          <div class="tool-section">
+            <div id="changedFilesDrawerList" class="files-list"></div>
+          </div>
+        `;
+        const filterEl = document.getElementById("changedFilesFilter");
+        const listEl = document.getElementById("changedFilesDrawerList");
+        const cbAdded = document.getElementById("filterAdded");
+        const cbModified = document.getElementById("filterModified");
+        const cbRemoved = document.getElementById("filterRemoved");
+
+        // Initialize checkboxes from state/localStorage
+        cbAdded && (cbAdded.checked = !!state.showAdded);
+        cbModified && (cbModified.checked = !!state.showModified);
+        cbRemoved && (cbRemoved.checked = !!state.showRemoved);
+
+        const renderList = () => {
+          if (!listEl) return;
+          listEl.innerHTML = "";
+          const q = (filterEl && filterEl.value.toLowerCase()) || "";
+          const filteredBySearch = state.diffFiles
+            .slice()
+            .sort((a, b) => a.filename.localeCompare(b.filename))
+            .filter(f => !q || f.filename.toLowerCase().includes(q));
+          // Update per-status counts (based on search filter)
+          const ca = document.getElementById("countAdded");
+          const cm = document.getElementById("countModified");
+          const cr = document.getElementById("countRemoved");
+          const addedCount = filteredBySearch.filter(f => f.status === "added").length;
+          const modifiedCount = filteredBySearch.filter(f => f.status === "modified").length;
+          const removedCount = filteredBySearch.filter(f => f.status === "removed").length;
+          if (ca) ca.textContent = `(${addedCount})`;
+          if (cm) cm.textContent = `(${modifiedCount})`;
+          if (cr) cr.textContent = `(${removedCount})`;
+
+          const files = filteredBySearch.filter(f =>
+              (state.showAdded && f.status === "added") ||
+              (state.showModified && f.status === "modified") ||
+              (state.showRemoved && f.status === "removed")
+            );
+          if (!files.length) {
+            const div = document.createElement("div");
+            div.className = "muted";
+            div.textContent = "No changes";
+            listEl.appendChild(div);
+          } else {
+            files.forEach(f => {
+              const btn = document.createElement("button");
+              btn.className = `file-row ${f.status} ${state.filePath === f.filename ? "active" : ""}`;
+              btn.title = f.filename;
+              btn.innerHTML = `
+                <span class="status ${f.status}">${statusSymbol(f.status)}</span>
+                <span class="name">${f.filename}</span>
+                <span class="metrics"><span class="add">+${f.additions || 0}</span> <span class="del">-${f.deletions || 0}</span></span>
+              `;
+              btn.addEventListener("click", () => {
+                state.filePath = f.filename;
+                const fp = document.getElementById("filePath");
+                if (fp) fp.textContent = state.filePath;
+                renderList();
+                renderDiff();
+                if (window.lucide) window.lucide.createIcons();
+              });
+              listEl.appendChild(btn);
+            });
+          }
+          updateChangedFilesBadge();
+        };
+
+        const persistFilters = () => {
+          try {
+            localStorage.setItem("atlas_changed_show_added", state.showAdded ? "1" : "0");
+            localStorage.setItem("atlas_changed_show_modified", state.showModified ? "1" : "0");
+            localStorage.setItem("atlas_changed_show_removed", state.showRemoved ? "1" : "0");
+          } catch {}
+        };
+
+        cbAdded && cbAdded.addEventListener("change", () => {
+          state.showAdded = !!cbAdded.checked;
+          persistFilters();
+          renderList();
+        });
+        cbModified && cbModified.addEventListener("change", () => {
+          state.showModified = !!cbModified.checked;
+          persistFilters();
+          renderList();
+        });
+        cbRemoved && cbRemoved.addEventListener("change", () => {
+          state.showRemoved = !!cbRemoved.checked;
+          persistFilters();
+          renderList();
+        });
+
+        filterEl && filterEl.addEventListener("input", renderList);
+        renderList();
         drawer.classList.remove("hidden");
       } else if (tool === "files") {
         drawer.innerHTML = `
@@ -706,6 +924,7 @@ ${testOutputText}</pre>
         drawer.classList.remove("hidden");
       }
       if (window.lucide) window.lucide.createIcons();
+      updateChangedFilesBadge();
     });
   });
 }
@@ -723,6 +942,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const v = parseInt(savedInt, 10);
       if (Number.isFinite(v) && v >= 5) state.refreshIntervalSec = v;
     }
+    const sa = localStorage.getItem("atlas_changed_show_added");
+    const sm = localStorage.getItem("atlas_changed_show_modified");
+    const sr = localStorage.getItem("atlas_changed_show_removed");
+    if (sa !== null) state.showAdded = sa === "1" || sa === "true";
+    if (sm !== null) state.showModified = sm === "1" || sm === "true";
+    if (sr !== null) state.showRemoved = sr === "1" || sr === "true";
   } catch {}
 
   const branchEl = document.getElementById("branchName");
@@ -749,6 +974,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupToolDrawer();
   updateViews();
   applyAutoRefresh();
+  updateChangedFilesBadge();
+  updateLastRefreshed();
 
   const prBtn = document.getElementById("createPrBtn");
   prBtn && prBtn.addEventListener("click", () => {

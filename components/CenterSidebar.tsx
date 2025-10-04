@@ -1,42 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { DiffFile, PrIssueComment } from "../lib/types";
+import type { PrIssueComment, ReviewComment } from "../lib/types";
 
 type Props = {
-  files: DiffFile[];
-  selectedPath: string;
-  onSelectPath: (p: string) => void;
   issueComments: PrIssueComment[];
+  reviewComments?: ReviewComment[];
+  lastRefreshedTs?: string | null;
+  autoRefreshEnabled?: boolean;
+  onToggleAuto?: () => void;
   onRefresh?: () => void;
+  onSelectPath?: (p: string) => void;
 };
 
-function statusSymbol(status: string) {
-  switch (status) {
-    case "added":
-      return "+";
-    case "removed":
-      return "-";
-    default:
-      return "M";
-  }
-}
-
-export default function CenterSidebar({ files, selectedPath, onSelectPath, issueComments, onRefresh }: Props) {
-  const [qFiles, setQFiles] = useState("");
+export default function CenterSidebar({
+  issueComments,
+  reviewComments = [],
+  lastRefreshedTs,
+  autoRefreshEnabled,
+  onToggleAuto,
+  onRefresh,
+  onSelectPath
+}: Props) {
   const [qComments, setQComments] = useState("");
-
-  const sorted = useMemo(() => {
-    const arr = [...files];
-    arr.sort((a, b) => a.filename.localeCompare(b.filename));
-    return arr;
-  }, [files]);
-
-  const filteredFiles = useMemo(() => {
-    if (!qFiles.trim()) return sorted;
-    const s = qFiles.toLowerCase();
-    return sorted.filter(f => f.filename.toLowerCase().includes(s));
-  }, [sorted, qFiles]);
+  const [qReviews, setQReviews] = useState("");
 
   const filteredComments = useMemo(() => {
     if (!qComments.trim()) return issueComments;
@@ -44,52 +31,34 @@ export default function CenterSidebar({ files, selectedPath, onSelectPath, issue
     return issueComments.filter(c => (c.body || "").toLowerCase().includes(s) || (c.author || "").toLowerCase().includes(s));
   }, [issueComments, qComments]);
 
-  return (
-    <aside className="center-sidebar" aria-label="Changed files and PR comments">
-      <div className="sidebar-section">
-        <div className="section-title">Changed Files</div>
-        <input
-          placeholder="Filter files…"
-          value={qFiles}
-          onChange={e => setQFiles(e.target.value)}
-          style={{
-            width: "100%",
-            height: 30,
-            borderRadius: 8,
-            border: "1px solid #1f2937",
-            background: "#0f1421",
-            color: "#e5e7eb",
-            padding: "0 8px",
-            marginBottom: 6
-          }}
-        />
-        <div className="files-list">
-          {filteredFiles.length === 0 ? (
-            <div className="muted">No changes</div>
-          ) : (
-            filteredFiles.map((f) => (
-              <button
-                key={f.filename}
-                className={`file-row ${selectedPath === f.filename ? "active" : ""}`}
-                onClick={() => onSelectPath(f.filename)}
-                title={f.filename}
-              >
-                <span className={`status ${f.status}`}>{statusSymbol(f.status)}</span>
-                <span className="name">{f.filename}</span>
-                <span className="metrics">
-                  <span className="add">+{f.additions}</span>
-                  <span className="del">-{f.deletions}</span>
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
+  const filteredReviews = useMemo(() => {
+    if (!qReviews.trim()) return reviewComments;
+    const s = qReviews.toLowerCase();
+    return reviewComments.filter(
+      r =>
+        (r.body || "").toLowerCase().includes(s) ||
+        (r.author || "").toLowerCase().includes(s) ||
+        (r.path || "").toLowerCase().includes(s) ||
+        String(r.line || "").includes(s)
+    );
+  }, [reviewComments, qReviews]);
 
+  return (
+    <aside className="center-sidebar" aria-label="PR comments">
       <div className="sidebar-section">
-        <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <span>PR Comments</span>
-          <button className="btn" onClick={onRefresh} title="Refresh comments">Refresh</button>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span className="muted" style={{ fontSize: 11 }}>
+              Last refreshed: {lastRefreshedTs || "-"}
+            </span>
+            <button className="btn" onClick={onRefresh} title="Refresh comments">Refresh</button>
+            {typeof autoRefreshEnabled === "boolean" && (
+              <button className="btn" onClick={onToggleAuto} title={autoRefreshEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh"}>
+                {autoRefreshEnabled ? "Pause" : "Resume"}
+              </button>
+            )}
+          </div>
         </div>
         <input
           placeholder="Filter comments…"
@@ -124,6 +93,53 @@ export default function CenterSidebar({ files, selectedPath, onSelectPath, issue
                   </span>
                 </div>
                 <div className="comment-body">{c.body}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="sidebar-section">
+        <div className="section-title">Review Comments</div>
+        <input
+          placeholder="Filter review comments…"
+          value={qReviews}
+          onChange={e => setQReviews(e.target.value)}
+          style={{
+            width: "100%",
+            height: 30,
+            borderRadius: 8,
+            border: "1px solid #1f2937",
+            background: "#0f1421",
+            color: "#e5e7eb",
+            padding: "0 8px",
+            marginBottom: 6
+          }}
+        />
+        <div className="comments-list">
+          {filteredReviews.length === 0 ? (
+            <div className="muted">No review comments yet</div>
+          ) : (
+            filteredReviews.map((r) => (
+              <div key={r.id} className="comment-card">
+                <div className="comment-meta">
+                  <span className="author">{r.author || "Reviewer"}</span>
+                  <span>
+                    {r.createdAt && <span className="time" style={{ marginRight: 8 }}>{new Date(r.createdAt).toLocaleString()}</span>}
+                    <button
+                      className="btn"
+                      title="Open file"
+                      onClick={() => onSelectPath?.(r.path)}
+                      style={{ height: 22, padding: "0 8px" }}
+                    >
+                      View file
+                    </button>
+                  </span>
+                </div>
+                <div className="comment-body">
+                  <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{r.path}:{r.line} {r.side ? `(${r.side})` : ""}</div>
+                  {r.body}
+                </div>
               </div>
             ))
           )}

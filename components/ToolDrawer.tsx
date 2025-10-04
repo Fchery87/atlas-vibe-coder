@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon } from "lucide-react";
+import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon, FileDiff } from "lucide-react";
 import { ToolKey } from "../lib/types";
+import type { DiffFile } from "../lib/types";
 
 type TreeItem = { path?: string; type?: string; sha?: string };
 
@@ -12,6 +13,8 @@ type Props = {
   branch: string;
   testOutput: string;
   onSelectPath?: (p: string) => void;
+  selectedPath?: string;
+  diffFiles?: DiffFile[];
   jiraIssueKey: string;
   setJiraIssueKey: (k: string) => void;
   autoRefreshEnabled: boolean;
@@ -26,6 +29,8 @@ export default function ToolDrawer({
   branch,
   testOutput,
   onSelectPath,
+  selectedPath,
+  diffFiles = [],
   jiraIssueKey,
   setJiraIssueKey,
   autoRefreshEnabled,
@@ -35,6 +40,32 @@ export default function ToolDrawer({
 }: Props) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [q, setQ] = useState("");
+  const [showAdded, setShowAdded] = useState<boolean>(true);
+  const [showModified, setShowModified] = useState<boolean>(true);
+  const [showRemoved, setShowRemoved] = useState<boolean>(true);
+
+  // Load persisted filters
+  useEffect(() => {
+    try {
+      const a = localStorage.getItem("atlas_changed_show_added");
+      const m = localStorage.getItem("atlas_changed_show_modified");
+      const r = localStorage.getItem("atlas_changed_show_removed");
+      if (a !== null) setShowAdded(a === "1" || a === "true");
+      if (m !== null) setShowModified(m === "1" || m === "true");
+      if (r !== null) setShowRemoved(r === "1" || r === "true");
+    } catch {}
+  }, []);
+
+  // Persist filters
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_added", showAdded ? "1" : "0"); } catch {}
+  }, [showAdded]);
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_modified", showModified ? "1" : "0"); } catch {}
+  }, [showModified]);
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_removed", showRemoved ? "1" : "0"); } catch {}
+  }, [showRemoved]);
 
   useEffect(() => {
     if (tool !== "files") return;
@@ -55,11 +86,24 @@ export default function ToolDrawer({
     return tree.filter(t => (t.path || "").toLowerCase().includes(qq));
   }, [tree, q]);
 
+  const activeStatusClass =
+    showAdded && !showModified && !showRemoved
+      ? "added"
+      : showModified && !showAdded && !showRemoved
+      ? "modified"
+      : showRemoved && !showAdded && !showModified
+      ? "removed"
+      : "";
+
   return (
     <>
       <nav className="tool-nav" aria-label="Tools">
         <button className={`tool-btn ${tool === "activity" ? "active" : ""}`} title="Activity Log" onClick={() => setTool("activity")}>
           <List />
+        </button>
+        <button className={`tool-btn ${tool === "changed" ? "active" : ""}`} title="Changed Files" onClick={() => setTool("changed")}>
+          <FileDiff />
+          {diffFiles?.length ? <span className={`tool-badge ${activeStatusClass}`}>{diffFiles.length}</span> : null}
         </button>
         <button className={`tool-btn ${tool === "files" ? "active" : ""}`} title="File Explorer" onClick={() => setTool("files")}>
           <Folder />
@@ -85,6 +129,78 @@ export default function ToolDrawer({
             <div className="tool-section">
               <h4>Current Branch</h4>
               <div>{branch}</div>
+            </div>
+          </>
+        )}
+        {tool === "changed" && (
+          <>
+            <div className="tool-section">
+              <h4>Changed Files</h4>
+              <input
+                type="text"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder="Filter files..."
+                style={{
+                  width: "100%",
+                  height: 30,
+                  borderRadius: 8,
+                  border: "1px solid #1f2937",
+                  background: "#0f1421",
+                  color: "#e5e7eb",
+                  padding: "0 8px",
+                  marginBottom: 8
+                }}
+              />
+              {(() => {
+                const filteredBySearch = (diffFiles || []).filter(f => !q.trim() || f.filename.toLowerCase().includes(q.toLowerCase()));
+                const addedCount = filteredBySearch.filter(f => f.status === "added").length;
+                const modifiedCount = filteredBySearch.filter(f => f.status === "modified").length;
+                const removedCount = filteredBySearch.filter(f => f.status === "removed").length;
+                return (
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showAdded} onChange={e => setShowAdded(e.target.checked)} />
+                      <span style={{ color: "var(--success)" }}>Added</span>
+                      <span className="muted">({addedCount})</span>
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showModified} onChange={e => setShowModified(e.target.checked)} />
+                      <span style={{ color: "var(--accent)" }}>Modified</span>
+                      <span className="muted">({modifiedCount})</span>
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
+                      <span style={{ color: "var(--error)" }}>Removed</span>
+                      <span className="muted">({removedCount})</span>
+                    </label>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="tool-section file-list" style={{ maxHeight: "60vh", overflow: "auto" }}>
+              {diffFiles
+                .slice()
+                .sort((a, b) => a.filename.localeCompare(b.filename))
+                .filter(f => !q.trim() || f.filename.toLowerCase().includes(q.toLowerCase()))
+                .filter(f => (showAdded && f.status === "added") || (showModified && f.status === "modified") || (showRemoved && f.status === "removed"))
+                .map((f) => (
+                  <button
+                    key={f.filename}
+                    className={`file-row ${f.status} ${selectedPath === f.filename ? "active" : ""}`}
+                    title={f.filename}
+                    onClick={() => onSelectPath?.(f.filename)}
+                    style={{ width: "100%", textAlign: "left" }}
+                  >
+                    <span className={`status ${f.status}`}>{f.status === "added" ? "+" : f.status === "removed" ? "-" : "M"}</span>
+                    <span className="name">{f.filename}</span>
+                    <span className="metrics">
+                      <span className="add">+{f.additions}</span>
+                      <span className="del">-{f.deletions}</span>
+                    </span>
+                  </button>
+                ))}
+              {diffFiles.length === 0 && <div className="muted">No changes</div>}
             </div>
           </>
         )}
