@@ -121,6 +121,8 @@ export default function Page() {
   const [headSha, setHeadSha] = useState<string | null>(null);
   const [prIssueComments, setPrIssueComments] = useState<PrIssueComment[]>([]);
   const [jiraIssueKey, setJiraIssueKey] = useState<string>("");
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(true);
+  const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(30);
 
   // Derived: lines for selected file
   const selectedPatch = useMemo(() => {
@@ -147,19 +149,41 @@ export default function Page() {
     }
   }, []);
 
-  // Init JIRA key from localStorage or env
+  // Init JIRA key and refresh settings from localStorage or env
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("atlas_jira_issue_key") : null;
+    const savedKey = typeof window !== "undefined" ? localStorage.getItem("atlas_jira_issue_key") : null;
     const envDefault = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY || "";
-    setJiraIssueKey(saved || envDefault || "");
+    setJiraIssueKey(savedKey || envDefault || "");
+
+    const savedAuto = typeof window !== "undefined" ? localStorage.getItem("atlas_auto_refresh_enabled") : null;
+    if (savedAuto !== null) {
+      setAutoRefreshEnabled(savedAuto === "1" || savedAuto === "true");
+    }
+    const savedInt = typeof window !== "undefined" ? localStorage.getItem("atlas_refresh_interval_sec") : null;
+    if (savedInt) {
+      const v = parseInt(savedInt, 10);
+      if (Number.isFinite(v) && v >= 5) setRefreshIntervalSec(v);
+    }
   }, []);
 
-  // Persist JIRA key
+  // Persist JIRA key and refresh settings
   useEffect(() => {
     try {
       localStorage.setItem("atlas_jira_issue_key", jiraIssueKey);
     } catch {}
   }, [jiraIssueKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("atlas_auto_refresh_enabled", autoRefreshEnabled ? "1" : "0");
+    } catch {}
+  }, [autoRefreshEnabled]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("atlas_refresh_interval_sec", String(refreshIntervalSec));
+    } catch {}
+  }, [refreshIntervalSec]);
 
   // Load diff from GitHub
   useEffect(() => {
@@ -277,15 +301,16 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prNumber, selectedPath, lines.length, jiraIssueKey]);
 
-  // Auto-poll every 30s while PR is present
+  // Auto-poll while PR is present (configurable)
   useEffect(() => {
-    if (!prNumber) return;
+    if (!prNumber || !autoRefreshEnabled) return;
+    const ms = Math.max(5, refreshIntervalSec) * 1000;
     const id = setInterval(() => {
       refreshRemote();
-    }, 30000);
+    }, ms);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prNumber, selectedPath, jiraIssueKey]);
+  }, [prNumber, selectedPath, jiraIssueKey, autoRefreshEnabled, refreshIntervalSec]);
 
   // Persist comments to localStorage on change
   useEffect(() => {
@@ -451,7 +476,7 @@ export default function Page() {
             selectedPath={selectedPath}
             onSelectPath={setSelectedPath}
             issueComments={prIssueComments}
-            onRefresh={refreshRemote}
+            onRefresh={() => { refreshRemote(); }}
           />
           <div className="center-content">
             <div className="editor-viewport">
@@ -490,6 +515,10 @@ export default function Page() {
         onSelectPath={setSelectedPath}
         jiraIssueKey={jiraIssueKey}
         setJiraIssueKey={setJiraIssueKey}
+        autoRefreshEnabled={autoRefreshEnabled}
+        setAutoRefreshEnabled={setAutoRefreshEnabled}
+        refreshIntervalSec={refreshIntervalSec}
+        setRefreshIntervalSec={setRefreshIntervalSec}
       />
 
       <div className="bottom-bar">

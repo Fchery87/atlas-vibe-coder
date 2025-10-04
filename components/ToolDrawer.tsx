@@ -14,9 +14,25 @@ type Props = {
   onSelectPath?: (p: string) => void;
   jiraIssueKey: string;
   setJiraIssueKey: (k: string) => void;
+  autoRefreshEnabled: boolean;
+  setAutoRefreshEnabled: (v: boolean) => void;
+  refreshIntervalSec: number;
+  setRefreshIntervalSec: (n: number) => void;
 };
 
-export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelectPath, jiraIssueKey, setJiraIssueKey }: Props) {
+export default function ToolDrawer({
+  tool,
+  setTool,
+  branch,
+  testOutput,
+  onSelectPath,
+  jiraIssueKey,
+  setJiraIssueKey,
+  autoRefreshEnabled,
+  setAutoRefreshEnabled,
+  refreshIntervalSec,
+  setRefreshIntervalSec
+}: Props) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [q, setQ] = useState("");
 
@@ -170,9 +186,48 @@ export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelect
                 border: "1px solid #1f2937",
                 background: "#0f1421",
                 color: "#e5e7eb",
-                padding: "0 8px"
+                padding: "0 8px",
+                marginBottom: 8
               }}
             />
+
+            <div className="muted" style={{ display: "block", marginBottom: 6 }}>
+              Auto-refresh PR/JIRA comments
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 8 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={autoRefreshEnabled}
+                  onChange={e => setAutoRefreshEnabled(e.target.checked)}
+                />
+                <span className="muted">Enabled</span>
+              </label>
+              <div></div>
+              <label className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Interval (sec)
+                <input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={refreshIntervalSec}
+                  onChange={e => {
+                    const v = parseInt(e.target.value || "0", 10);
+                    if (!Number.isFinite(v)) return;
+                    setRefreshIntervalSec(Math.max(5, v));
+                  }}
+                  style={{
+                    width: 80,
+                    height: 30,
+                    borderRadius: 8,
+                    border: "1px solid #1f2937",
+                    background: "#0f1421",
+                    color: "#e5e7eb",
+                    padding: "0 8px"
+                  }}
+                />
+              </label>
+            </div>
           </div>
         )}
       </div>
