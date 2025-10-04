@@ -25,6 +25,10 @@ const state = {
     { id: 101, author: "reviewer-1", body: "Can we rename X-Request-ID to X-Request-Id consistently?", createdAt: new Date().toISOString(), url: "#" },
     { id: 102, author: "teammate-2", body: "Looks good. Please confirm the JWT attach logic for subrequests.", createdAt: new Date().toISOString(), url: "#" }
   ],
+  // Status filters for Changed Files
+  showAdded: true,
+  showModified: true,
+  showRemoved: true,
   jiraIssueKey: "",
   autoRefreshEnabled: true,
   refreshIntervalSec: 30,
@@ -584,6 +588,14 @@ function updateChangedFilesBadge() {
   const n = (state.diffFiles || []).length || 0;
   badge.textContent = String(n);
   badge.style.display = n > 0 ? "inline-block" : "none";
+  // Variant by active status filters (only if exactly one is active)
+  const active = [state.showAdded, state.showModified, state.showRemoved].filter(Boolean).length;
+  badge.classList.remove("added", "modified", "removed");
+  if (active === 1) {
+    if (state.showAdded) badge.classList.add("added");
+    else if (state.showModified) badge.classList.add("modified");
+    else if (state.showRemoved) badge.classList.add("removed");
+  }
 }
 
 function setupToolDrawer() {
@@ -610,7 +622,18 @@ function setupToolDrawer() {
         drawer.innerHTML = `
           <div class="tool-section">
             <h4>Changed Files</h4>
-            <input id="changedFilesFilter" type="text" placeholder="Filter files..." style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;" />
+            <input id="changedFilesFilter" type="text" placeholder="Filter files..." style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:8px;" />
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterAdded" type="checkbox" /> <span class="success">Added</span>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterModified" type="checkbox" /> <span style="color: var(--accent)">Modified</span>
+              </label>
+              <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input id="filterRemoved" type="checkbox" /> <span class="error">Removed</span>
+              </label>
+            </div>
           </div>
           <div class="tool-section">
             <div id="changedFilesDrawerList" class="files-list"></div>
@@ -618,6 +641,15 @@ function setupToolDrawer() {
         `;
         const filterEl = document.getElementById("changedFilesFilter");
         const listEl = document.getElementById("changedFilesDrawerList");
+        const cbAdded = document.getElementById("filterAdded");
+        const cbModified = document.getElementById("filterModified");
+        const cbRemoved = document.getElementById("filterRemoved");
+
+        // Initialize checkboxes from state/localStorage
+        cbAdded && (cbAdded.checked = !!state.showAdded);
+        cbModified && (cbModified.checked = !!state.showModified);
+        cbRemoved && (cbRemoved.checked = !!state.showRemoved);
+
         const renderList = () => {
           if (!listEl) return;
           listEl.innerHTML = "";
@@ -625,7 +657,12 @@ function setupToolDrawer() {
           const files = state.diffFiles
             .slice()
             .sort((a, b) => a.filename.localeCompare(b.filename))
-            .filter(f => !q || f.filename.toLowerCase().includes(q));
+            .filter(f => !q || f.filename.toLowerCase().includes(q))
+            .filter(f =>
+              (state.showAdded && f.status === "added") ||
+              (state.showModified && f.status === "modified") ||
+              (state.showRemoved && f.status === "removed")
+            );
           if (!files.length) {
             const div = document.createElement("div");
             div.className = "muted";
@@ -634,7 +671,7 @@ function setupToolDrawer() {
           } else {
             files.forEach(f => {
               const btn = document.createElement("button");
-              btn.className = `file-row ${state.filePath === f.filename ? "active" : ""}`;
+              btn.className = `file-row ${f.status} ${state.filePath === f.filename ? "active" : ""}`;
               btn.title = f.filename;
               btn.innerHTML = `
                 <span class="status ${f.status}">${statusSymbol(f.status)}</span>
@@ -652,7 +689,33 @@ function setupToolDrawer() {
               listEl.appendChild(btn);
             });
           }
+          updateChangedFilesBadge();
         };
+
+        const persistFilters = () => {
+          try {
+            localStorage.setItem("atlas_changed_show_added", state.showAdded ? "1" : "0");
+            localStorage.setItem("atlas_changed_show_modified", state.showModified ? "1" : "0");
+            localStorage.setItem("atlas_changed_show_removed", state.showRemoved ? "1" : "0");
+          } catch {}
+        };
+
+        cbAdded && cbAdded.addEventListener("change", () => {
+          state.showAdded = !!cbAdded.checked;
+          persistFilters();
+          renderList();
+        });
+        cbModified && cbModified.addEventListener("change", () => {
+          state.showModified = !!cbModified.checked;
+          persistFilters();
+          renderList();
+        });
+        cbRemoved && cbRemoved.addEventListener("change", () => {
+          state.showRemoved = !!cbRemoved.checked;
+          persistFilters();
+          renderList();
+        });
+
         filterEl && filterEl.addEventListener("input", renderList);
         renderList();
         drawer.classList.remove("hidden");
@@ -782,6 +845,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const v = parseInt(savedInt, 10);
       if (Number.isFinite(v) && v >= 5) state.refreshIntervalSec = v;
     }
+    const sa = localStorage.getItem("atlas_changed_show_added");
+    const sm = localStorage.getItem("atlas_changed_show_modified");
+    const sr = localStorage.getItem("atlas_changed_show_removed");
+    if (sa !== null) state.showAdded = sa === "1" || sa === "true";
+    if (sm !== null) state.showModified = sm === "1" || sm === "true";
+    if (sr !== null) state.showRemoved = sr === "1" || sr === "true";
   } catch {}
 
   const branchEl = document.getElementById("branchName");

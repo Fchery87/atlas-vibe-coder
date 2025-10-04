@@ -40,6 +40,32 @@ export default function ToolDrawer({
 }: Props) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [q, setQ] = useState("");
+  const [showAdded, setShowAdded] = useState<boolean>(true);
+  const [showModified, setShowModified] = useState<boolean>(true);
+  const [showRemoved, setShowRemoved] = useState<boolean>(true);
+
+  // Load persisted filters
+  useEffect(() => {
+    try {
+      const a = localStorage.getItem("atlas_changed_show_added");
+      const m = localStorage.getItem("atlas_changed_show_modified");
+      const r = localStorage.getItem("atlas_changed_show_removed");
+      if (a !== null) setShowAdded(a === "1" || a === "true");
+      if (m !== null) setShowModified(m === "1" || m === "true");
+      if (r !== null) setShowRemoved(r === "1" || r === "true");
+    } catch {}
+  }, []);
+
+  // Persist filters
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_added", showAdded ? "1" : "0"); } catch {}
+  }, [showAdded]);
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_modified", showModified ? "1" : "0"); } catch {}
+  }, [showModified]);
+  useEffect(() => {
+    try { localStorage.setItem("atlas_changed_show_removed", showRemoved ? "1" : "0"); } catch {}
+  }, [showRemoved]);
 
   useEffect(() => {
     if (tool !== "files") return;
@@ -60,6 +86,15 @@ export default function ToolDrawer({
     return tree.filter(t => (t.path || "").toLowerCase().includes(qq));
   }, [tree, q]);
 
+  const activeStatusClass =
+    showAdded && !showModified && !showRemoved
+      ? "added"
+      : showModified && !showAdded && !showRemoved
+      ? "modified"
+      : showRemoved && !showAdded && !showModified
+      ? "removed"
+      : "";
+
   return (
     <>
       <nav className="tool-nav" aria-label="Tools">
@@ -68,7 +103,7 @@ export default function ToolDrawer({
         </button>
         <button className={`tool-btn ${tool === "changed" ? "active" : ""}`} title="Changed Files" onClick={() => setTool("changed")}>
           <FileDiff />
-          {diffFiles?.length ? <span className="tool-badge">{diffFiles.length}</span> : null}
+          {diffFiles?.length ? <span className={`tool-badge ${activeStatusClass}`}>{diffFiles.length}</span> : null}
         </button>
         <button className={`tool-btn ${tool === "files" ? "active" : ""}`} title="File Explorer" onClick={() => setTool("files")}>
           <Folder />
@@ -113,19 +148,35 @@ export default function ToolDrawer({
                   border: "1px solid #1f2937",
                   background: "#0f1421",
                   color: "#e5e7eb",
-                  padding: "0 8px"
+                  padding: "0 8px",
+                  marginBottom: 8
                 }}
               />
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="checkbox" checked={showAdded} onChange={e => setShowAdded(e.target.checked)} />
+                  <span style={{ color: "var(--success)" }}>Added</span>
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="checkbox" checked={showModified} onChange={e => setShowModified(e.target.checked)} />
+                  <span style={{ color: "var(--accent)" }}>Modified</span>
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
+                  <span style={{ color: "var(--error)" }}>Removed</span>
+                </label>
+              </div>
             </div>
             <div className="tool-section file-list" style={{ maxHeight: "60vh", overflow: "auto" }}>
               {diffFiles
                 .slice()
                 .sort((a, b) => a.filename.localeCompare(b.filename))
                 .filter(f => !q.trim() || f.filename.toLowerCase().includes(q.toLowerCase()))
+                .filter(f => (showAdded && f.status === "added") || (showModified && f.status === "modified") || (showRemoved && f.status === "removed"))
                 .map((f) => (
                   <button
                     key={f.filename}
-                    className={`file-row ${selectedPath === f.filename ? "active" : ""}`}
+                    className={`file-row ${f.status} ${selectedPath === f.filename ? "active" : ""}`}
                     title={f.filename}
                     onClick={() => onSelectPath?.(f.filename)}
                     style={{ width: "100%", textAlign: "left" }}
