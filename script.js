@@ -598,6 +598,56 @@ function setupToolDrawer() {
           </div>
         `;
         drawer.classList.remove("hidden");
+      } else if (tool === "changed") {
+        drawer.innerHTML = `
+          <div class="tool-section">
+            <h4>Changed Files</h4>
+            <input id="changedFilesFilter" type="text" placeholder="Filter files..." style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;" />
+          </div>
+          <div class="tool-section">
+            <div id="changedFilesDrawerList" class="files-list"></div>
+          </div>
+        `;
+        const filterEl = document.getElementById("changedFilesFilter");
+        const listEl = document.getElementById("changedFilesDrawerList");
+        const renderList = () => {
+          if (!listEl) return;
+          listEl.innerHTML = "";
+          const q = (filterEl && filterEl.value.toLowerCase()) || "";
+          const files = state.diffFiles
+            .slice()
+            .sort((a, b) => a.filename.localeCompare(b.filename))
+            .filter(f => !q || f.filename.toLowerCase().includes(q));
+          if (!files.length) {
+            const div = document.createElement("div");
+            div.className = "muted";
+            div.textContent = "No changes";
+            listEl.appendChild(div);
+          } else {
+            files.forEach(f => {
+              const btn = document.createElement("button");
+              btn.className = `file-row ${state.filePath === f.filename ? "active" : ""}`;
+              btn.title = f.filename;
+              btn.innerHTML = `
+                <span class="status ${f.status}">${statusSymbol(f.status)}</span>
+                <span class="name">${f.filename}</span>
+                <span class="metrics"><span class="add">+${f.additions || 0}</span> <span class="del">-${f.deletions || 0}</span></span>
+              `;
+              btn.addEventListener("click", () => {
+                state.filePath = f.filename;
+                const fp = document.getElementById("filePath");
+                if (fp) fp.textContent = state.filePath;
+                renderList();
+                renderDiff();
+                if (window.lucide) window.lucide.createIcons();
+              });
+              listEl.appendChild(btn);
+            });
+          }
+        };
+        filterEl && filterEl.addEventListener("input", renderList);
+        renderList();
+        drawer.classList.remove("hidden");
       } else if (tool === "files") {
         drawer.innerHTML = `
           <div class="tool-section">

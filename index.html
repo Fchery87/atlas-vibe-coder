@@ -63,16 +63,8 @@
       </div>
 
       <div class="center-body">
-        <!-- Changed Files + PR Comments sidebar -->
-        <aside class="center-sidebar" aria-label="Changed files and PR comments">
-          <div class="sidebar-section">
-            <div class="section-title">Changed Files</div>
-            <input id="filesFilter" placeholder="Filter files…" />
-            <div id="changedFilesList" class="files-list">
-              <!-- populated by script -->
-            </div>
-          </div>
-
+        <!-- PR Comments sidebar -->
+        <aside class="center-sidebar" aria-label="PR comments">
           <div class="sidebar-section">
             <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
               <span>PR Comments</span>
@@ -108,6 +100,9 @@
     <nav class="tool-nav" aria-label="Tools">
       <button class="tool-btn active" data-tool="activity" title="Activity Log">
         <i data-lucide="list"></i>
+      </button>
+      <button class="tool-btn" data-tool="changed" title="Changed Files">
+        <i data-lucide="file-diff"></i>
       </button>
       <button class="tool-btn" data-tool="files" title="File Explorer">
         <i data-lucide="folder"></i>
