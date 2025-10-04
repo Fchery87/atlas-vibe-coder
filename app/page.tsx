@@ -472,9 +472,6 @@ export default function Page() {
 
         <div className="center-body">
           <CenterSidebar
-            files={diffFiles}
-            selectedPath={selectedPath}
-            onSelectPath={setSelectedPath}
             issueComments={prIssueComments}
             onRefresh={() => { refreshRemote(); }}
           />
@@ -513,6 +510,8 @@ export default function Page() {
         branch={branch}
         testOutput={testOutputText}
         onSelectPath={setSelectedPath}
+        selectedPath={selectedPath}
+        diffFiles={diffFiles}
         jiraIssueKey={jiraIssueKey}
         setJiraIssueKey={setJiraIssueKey}
         autoRefreshEnabled={autoRefreshEnabled}

@@ -29,4 +29,4 @@ export type PrIssueComment = {
   url?: string;
 };
 
-export type ToolKey = "activity" | "files" | "terminal" | "integrations" | "settings" | null;
+export type ToolKey = "activity" | "changed" | "files" | "terminal" | "integrations" | "settings" | null;

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon } from "lucide-react";
+import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon, FileDiff } from "lucide-react";
 import { ToolKey } from "../lib/types";
+import type { DiffFile } from "../lib/types";
 
 type TreeItem = { path?: string; type?: string; sha?: string };
 
@@ -12,6 +13,8 @@ type Props = {
   branch: string;
   testOutput: string;
   onSelectPath?: (p: string) => void;
+  selectedPath?: string;
+  diffFiles?: DiffFile[];
   jiraIssueKey: string;
   setJiraIssueKey: (k: string) => void;
   autoRefreshEnabled: boolean;
@@ -26,6 +29,8 @@ export default function ToolDrawer({
   branch,
   testOutput,
   onSelectPath,
+  selectedPath,
+  diffFiles = [],
   jiraIssueKey,
   setJiraIssueKey,
   autoRefreshEnabled,
@@ -61,6 +66,9 @@ export default function ToolDrawer({
         <button className={`tool-btn ${tool === "activity" ? "active" : ""}`} title="Activity Log" onClick={() => setTool("activity")}>
           <List />
         </button>
+        <button className={`tool-btn ${tool === "changed" ? "active" : ""}`} title="Changed Files" onClick={() => setTool("changed")}>
+          <FileDiff />
+        </button>
         <button className={`tool-btn ${tool === "files" ? "active" : ""}`} title="File Explorer" onClick={() => setTool("files")}>
           <Folder />
         </button>
@@ -85,6 +93,51 @@ export default function ToolDrawer({
             <div className="tool-section">
               <h4>Current Branch</h4>
               <div>{branch}</div>
+            </div>
+          </>
+        )}
+        {tool === "changed" && (
+          <>
+            <div className="tool-section">
+              <h4>Changed Files</h4>
+              <input
+                type="text"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder="Filter files..."
+                style={{
+                  width: "100%",
+                  height: 30,
+                  borderRadius: 8,
+                  border: "1px solid #1f2937",
+                  background: "#0f1421",
+                  color: "#e5e7eb",
+                  padding: "0 8px"
+                }}
+              />
+            </div>
+            <div className="tool-section file-list" style={{ maxHeight: "60vh", overflow: "auto" }}>
+              {diffFiles
+                .slice()
+                .sort((a, b) => a.filename.localeCompare(b.filename))
+                .filter(f => !q.trim() || f.filename.toLowerCase().includes(q.toLowerCase()))
+                .map((f) => (
+                  <button
+                    key={f.filename}
+                    className={`file-row ${selectedPath === f.filename ? "active" : ""}`}
+                    title={f.filename}
+                    onClick={() => onSelectPath?.(f.filename)}
+                    style={{ width: "100%", textAlign: "left" }}
+                  >
+                    <span className={`status ${f.status}`}>{f.status === "added" ? "+" : f.status === "removed" ? "-" : "M"}</span>
+                    <span className="name">{f.filename}</span>
+                    <span className="metrics">
+                      <span className="add">+{f.additions}</span>
+                      <span className="del">-{f.deletions}</span>
+                    </span>
+                  </button>
+                ))}
+              {diffFiles.length === 0 && <div className="muted">No changes</div>}
             </div>
           </>
         )}
