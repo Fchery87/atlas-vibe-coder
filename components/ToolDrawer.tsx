@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon, FileDiff } from "lucide-react";
+import { List, Folder, Terminal as TerminalIcon, Link as LinkIcon, Settings as SettingsIcon, FileDiff, MessageSquare } from "lucide-react";
 import { ToolKey } from "../lib/types";
-import type { DiffFile } from "../lib/types";
+import type { DiffFile, PrIssueComment, ReviewComment } from "../lib/types";
 
 type TreeItem = { path?: string; type?: string; sha?: string };
 
@@ -21,6 +21,12 @@ type Props = {
   setAutoRefreshEnabled: (v: boolean) => void;
   refreshIntervalSec: number;
   setRefreshIntervalSec: (n: number) => void;
+
+  issueComments?: PrIssueComment[];
+  reviewComments?: ReviewComment[];
+  lastRefreshedTs?: string | null;
+  onRefresh?: () => void;
+  onToggleAuto?: () => void;
 };
 
 export default function ToolDrawer({
@@ -36,13 +42,20 @@ export default function ToolDrawer({
   autoRefreshEnabled,
   setAutoRefreshEnabled,
   refreshIntervalSec,
-  setRefreshIntervalSec
+  setRefreshIntervalSec,
+  issueComments = [],
+  reviewComments = [],
+  lastRefreshedTs,
+  onRefresh,
+  onToggleAuto
 }: Props) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [q, setQ] = useState("");
   const [showAdded, setShowAdded] = useState<boolean>(true);
   const [showModified, setShowModified] = useState<boolean>(true);
   const [showRemoved, setShowRemoved] = useState<boolean>(true);
+  const [qc, setQc] = useState("");
+  const [qr, setQr] = useState("");
 
   // Load persisted filters
   useEffect(() => {
@@ -101,6 +114,9 @@ export default function ToolDrawer({
         <button className={`tool-btn ${tool === "activity" ? "active" : ""}`} title="Activity Log" onClick={() => setTool("activity")}>
           <List />
         </button>
+        <button className={`tool-btn ${tool === "comments" ? "active" : ""}`} title="PR Comments" onClick={() => setTool("comments")}>
+          <MessageSquare />
+        </button>
         <button className={`tool-btn ${tool === "changed" ? "active" : ""}`} title="Changed Files" onClick={() => setTool("changed")}>
           <FileDiff />
           {diffFiles?.length ? <span className={`tool-badge ${activeStatusClass}`}>{diffFiles.length}</span> : null}
@@ -132,6 +148,131 @@ export default function ToolDrawer({
             </div>
           </>
         )}
+
+        {tool === "comments" && (
+          <>
+            <div className="tool-section">
+              <h4>PR Comments</h4>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                <span className="muted" style={{ fontSize: 11 }}>
+                  Last refreshed: {lastRefreshedTs || "-"}
+                </span>
+                <div style={{ display: "inline-flex", gap: 8 }}>
+                  <button className="btn" onClick={onRefresh} title="Refresh comments">Refresh</button>
+                  <button className="btn" onClick={onToggleAuto} title={autoRefreshEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh"}>
+                    {autoRefreshEnabled ? "Pause" : "Resume"}
+                  </button>
+                </div>
+              </div>
+              <input
+                type="text"
+                value={qc}
+                onChange={e => setQc(e.target.value)}
+                placeholder="Filter comments…"
+                style={{
+                  width: "100%",
+                  height: 30,
+                  borderRadius: 8,
+                  border: "1px solid #1f2937",
+                  background: "#0f1421",
+                  color: "#e5e7eb",
+                  padding: "0 8px",
+                  marginBottom: 6
+                }}
+              />
+              <div className="comments-list">
+                {(issueComments || [])
+                  .filter(c => {
+                    const s = qc.trim().toLowerCase();
+                    if (!s) return true;
+                    return (c.body || "").toLowerCase().includes(s) || (c.author || "").toLowerCase().includes(s);
+                  })
+                  .map(c => {
+                    const when = c.createdAt ? new Date(c.createdAt).toLocaleString() : "";
+                    return (
+                      <div key={c.id} className="comment-card">
+                        <div className="comment-meta">
+                          <span className="author">{c.author || "Unknown"}</span>
+                          <span>
+                            {when ? <span className="time" style={{ marginRight: 8 }}>{when}</span> : null}
+                            {c.url ? (
+                              <a href={c.url} target="_blank" rel="noreferrer" className="muted" style={{ textDecoration: "underline" }}>
+                                View
+                              </a>
+                            ) : null}
+                          </span>
+                        </div>
+                        <div className="comment-body">{c.body}</div>
+                      </div>
+                    );
+                  })}
+                {(issueComments || []).length === 0 && <div className="muted">No PR discussion yet</div>}
+              </div>
+            </div>
+
+            <div className="tool-section">
+              <h4>Review Comments</h4>
+              <input
+                type="text"
+                value={qr}
+                onChange={e => setQr(e.target.value)}
+                placeholder="Filter review comments…"
+                style={{
+                  width: "100%",
+                  height: 30,
+                  borderRadius: 8,
+                  border: "1px solid #1f2937",
+                  background: "#0f1421",
+                  color: "#e5e7eb",
+                  padding: "0 8px",
+                  marginBottom: 6
+                }}
+              />
+              <div className="comments-list">
+                {(reviewComments || [])
+                  .filter(r => {
+                    const s = qr.trim().toLowerCase();
+                    if (!s) return true;
+                    return (
+                      (r.body || "").toLowerCase().includes(s) ||
+                      (r.author || "").toLowerCase().includes(s) ||
+                      (r.path || "").toLowerCase().includes(s) ||
+                      String(r.line || "").includes(s)
+                    );
+                  })
+                  .map(r => {
+                    const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+                    return (
+                      <div key={r.id} className="comment-card">
+                        <div className="comment-meta">
+                          <span className="author">{r.author || "Reviewer"}</span>
+                          <span>
+                            {when ? <span className="time" style={{ marginRight: 8 }}>{when}</span> : null}
+                            <button
+                              className="btn"
+                              title="Open file"
+                              onClick={() => onSelectPath?.(r.path)}
+                              style={{ height: 22, padding: "0 8px" }}
+                            >
+                              View file
+                            </button>
+                          </span>
+                        </div>
+                        <div className="comment-body">
+                          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                            {r.path}:{r.line} {r.side ? `(${r.side})` : ""}
+                          </div>
+                          {r.body}
+                        </div>
+                      </div>
+                    );
+                  })}
+                {(reviewComments || []).length === 0 && <div className="muted">No review comments yet</div>}
+              </div>
+            </div>
+          </>
+        )}
+
         {tool === "changed" && (
           <>
             <div className="tool-section">

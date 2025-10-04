@@ -233,7 +233,7 @@ body {
 /* Center body with left sidebar */
 .center-body {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
   height: 100%;
   overflow: hidden;

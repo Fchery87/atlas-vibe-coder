@@ -40,4 +40,4 @@ export type ReviewComment = {
   side?: "LEFT" | "RIGHT";
 };
 
-export type ToolKey = "activity" | "changed" | "files" | "terminal" | "integrations" | "settings" | null;
+export type ToolKey = "activity" | "comments" | "changed" | "files" | "terminal" | "integrations" | "settings" | null;

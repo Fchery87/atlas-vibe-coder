@@ -5,7 +5,6 @@ import { GitBranch, GitPullRequest, FileCode2, Mic, Globe, Code as CodeIcon } fr
 import AutonomousLog from "../components/AutonomousLog";
 import DiffViewer from "../components/DiffViewer";
 import ToolDrawer from "../components/ToolDrawer";
-import CenterSidebar from "../components/CenterSidebar";
 import type { Comment, DiffFile, LogEntry, ToolKey, PrIssueComment, ReviewComment } from "../lib/types";
 import { parseUnifiedPatch, mapLineToIndex } from "../lib/diff";
 
@@ -550,15 +549,6 @@ export default function Page() {
         </div>
 
         <div className="center-body">
-          <CenterSidebar
-            issueComments={prIssueComments}
-            reviewComments={reviewComments}
-            lastRefreshedTs={lastRefreshed}
-            autoRefreshEnabled={autoRefreshEnabled}
-            onToggleAuto={() => setAutoRefreshEnabled(v => !v)}
-            onRefresh={() => { refreshRemote(); }}
-            onSelectPath={setSelectedPath}
-          />
           <div className="center-content">
             <div className="editor-viewport">
               {tab === "diff" && (
@@ -602,6 +592,11 @@ export default function Page() {
         setAutoRefreshEnabled={setAutoRefreshEnabled}
         refreshIntervalSec={refreshIntervalSec}
         setRefreshIntervalSec={setRefreshIntervalSec}
+        issueComments={prIssueComments}
+        reviewComments={reviewComments}
+        lastRefreshedTs={lastRefreshed}
+        onToggleAuto={() => setAutoRefreshEnabled(v => !v)}
+        onRefresh={() => { refreshRemote(); }}
       />
 
       <div className="bottom-bar">
