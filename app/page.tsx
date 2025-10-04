@@ -5,7 +5,8 @@ import { GitBranch, GitPullRequest, FileCode2, Mic, Globe, Code as CodeIcon } fr
 import AutonomousLog from "../components/AutonomousLog";
 import DiffViewer from "../components/DiffViewer";
 import ToolDrawer from "../components/ToolDrawer";
-import type { Comment, DiffFile, LogEntry, ToolKey } from "../lib/types";
+import CenterSidebar from "../components/CenterSidebar";
+import type { Comment, DiffFile, LogEntry, ToolKey, PrIssueComment } from "../lib/types";
 import { parseUnifiedPatch, mapLineToIndex } from "../lib/diff";
 
 function nowTs() {
@@ -118,6 +119,8 @@ export default function Page() {
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [prNumber, setPrNumber] = useState<number | null>(null);
   const [headSha, setHeadSha] = useState<string | null>(null);
+  const [prIssueComments, setPrIssueComments] = useState<PrIssueComment[]>([]);
+  const [jiraIssueKey, setJiraIssueKey] = useState<string>("");
 
   // Derived: lines for selected file
   const selectedPatch = useMemo(() => {
@@ -143,6 +146,20 @@ export default function Page() {
     } catch {
     }
   }, []);
+
+  // Init JIRA key from localStorage or env
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("atlas_jira_issue_key") : null;
+    const envDefault = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY || "";
+    setJiraIssueKey(saved || envDefault || "");
+  }, []);
+
+  // Persist JIRA key
+  useEffect(() => {
+    try {
+      localStorage.setItem("atlas_jira_issue_key", jiraIssueKey);
+    } catch {}
+  }, [jiraIssueKey]);
 
   // Load diff from GitHub
   useEffect(() => {
@@ -220,16 +237,26 @@ export default function Page() {
               return true;
             });
           });
+
+          // PR issue comments (non-anchored) for sidebar
+          const ics = Array.isArray(data.issue_comments) ? data.issue_comments : [];
+          const simplified: PrIssueComment[] = ics.map((c: any) => ({
+            id: c.id,
+            author: c.user?.login || c.user?.name,
+            body: c.body || "",
+            createdAt: c.created_at || c.updated_at
+          }));
+          setPrIssueComments(simplified);
         }
       } catch {
         // ignore
       }
 
       // JIRA comments into log (optional)
-      const defaultIssueKey = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY;
-      if (defaultIssueKey) {
+      const issueKey = jiraIssueKey;
+      if (issueKey) {
         try {
-          const jr = await fetch(`/api/jira/comment?issueKey=${encodeURIComponent(defaultIssueKey)}`);
+          const jr = await fetch(`/api/jira/comment?issueKey=${encodeURIComponent(issueKey)}`);
           if (jr.ok) {
             const jd = await jr.json();
             const comments = Array.isArray(jd.comments) ? jd.comments : [];
@@ -246,7 +273,7 @@ export default function Page() {
     }
     syncRemote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prNumber, selectedPath, lines.length]);
+  }, [prNumber, selectedPath, lines.length, jiraIssueKey]);
 
   // Persist comments to localStorage on change
   useEffect(() => {
@@ -324,15 +351,14 @@ export default function Page() {
     }
 
     // Sync with JIRA (optional)
-    const defaultIssueKey = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY;
-    if (defaultIssueKey) {
+    if (jiraIssueKey) {
       try {
         await fetch("/api/jira/comment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ issueKey: defaultIssueKey, text })
+          body: JSON.stringify({ issueKey: jiraIssueKey, text })
         });
-        setLogs(prev => [...prev, { kind: "executing", title: "JIRA", text: `Posted comment to ${defaultIssueKey}`, ts: nowTs() }]);
+        setLogs(prev => [...prev, { kind: "executing", title: "JIRA", text: `Posted comment to ${jiraIssueKey}`, ts: nowTs() }]);
       } catch {}
     }
   }
@@ -407,33 +433,50 @@ export default function Page() {
           </div>
         </div>
 
-        <div className="editor-viewport">
-          {tab === "diff" && (
-            <DiffViewer
-              selectedPath={selectedPath}
-              diffFiles={diffFiles}
-              comments={comments}
-              onAddComment={onAddComment}
-              onSelectPath={setSelectedPath}
-            />
-          )}
+        <div className="center-body">
+          <CenterSidebar
+            files={diffFiles}
+            selectedPath={selectedPath}
+            onSelectPath={setSelectedPath}
+            issueComments={prIssueComments}
+          />
+          <div className="center-content">
+            <div className="editor-viewport">
+              {tab === "diff" && (
+                <DiffViewer
+                  selectedPath={selectedPath}
+                  diffFiles={diffFiles}
+                  comments={comments}
+                  onAddComment={onAddComment}
+                  onSelectPath={setSelectedPath}
+                />
+              )}
 
-          {tab === "source" && (
-            <pre className="view view-source">
-              <code className="code-block">{sampleSource}</code>
-            </pre>
-          )}
+              {tab === "source" && (
+                <pre className="view view-source">
+                  <code className="code-block">{sampleSource}</code>
+                </pre>
+              )}
 
-          {tab === "tests" && (
-            <div className="view view-tests">
-              <div className="test-summary">{testSummaryText}</div>
-              <pre className="test-output">{testOutputText}</pre>
+              {tab === "tests" && (
+                <div className="view view-tests">
+                  <div className="test-summary">{testSummaryText}</div>
+                  <pre className="test-output">{testOutputText}</pre>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </section>
 
-      <ToolDrawer tool={tool} setTool={setTool} branch={branch} testOutput={testOutputText} onSelectPath={setSelectedPath} />
+      <ToolDrawer
+        tool={tool}
+        setTool={setTool}
+        branch={branch}
+        testOutput={testOutputText}
+        onSelectPath={setSelectedPath}
+        jiraIssueKey={jiraIssueKey}
+        set>
 
       <div className="bottom-bar">
         <div className="input-area">

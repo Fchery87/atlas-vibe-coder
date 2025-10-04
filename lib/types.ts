@@ -21,4 +21,11 @@ export type DiffFile = {
   patch?: string | null;
 };
 
+export type PrIssueComment = {
+  id: number;
+  author?: string;
+  body: string;
+  createdAt?: string;
+};
+
 export type ToolKey = "activity" | "files" | "terminal" | "integrations" | "settings" | null;

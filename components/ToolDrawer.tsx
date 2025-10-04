@@ -12,9 +12,11 @@ type Props = {
   branch: string;
   testOutput: string;
   onSelectPath?: (p: string) => void;
+  jiraIssueKey: string;
+  setJiraIssueKey: (k: string) => void;
 };
 
-export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelectPath }: Props) {
+export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelectPath, jiraIssueKey, setJiraIssueKey }: Props) {
   const [tree, setTree] = useState<TreeItem[]>([]);
   const [q, setQ] = useState("");
 
@@ -151,6 +153,26 @@ export default function ToolDrawer({ tool, setTool, branch, testOutput, onSelect
             <div className="muted" style={{ marginTop: 8 }}>
               Logging: Verbose
             </div>
+
+            <div style={{ height: 8 }}></div>
+            <label className="muted" style={{ display: "block", marginBottom: 6 }}>
+              JIRA Issue Key (per task)
+            </label>
+            <input
+              type="text"
+              value={jiraIssueKey}
+              onChange={e => setJiraIssueKey(e.target.value)}
+              placeholder="e.g. ENG-123"
+              style={{
+                width: "100%",
+                height: 34,
+                borderRadius: 8,
+                border: "1px solid #1f2937",
+                background: "#0f1421",
+                color: "#e5e7eb",
+                padding: "0 8px"
+              }}
+            />
           </div>
         )}
       </div>
