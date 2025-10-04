@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas — Autonomous SWE Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Icons (Lucide) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Left Panel: Autonomous Log -->
+    <aside class="panel-left">
+      <header class="left-header">
+        <div class="task-title">
+          <span class="chip">Task</span>
+          <span id="taskTitle">Implement Auth API Fix</span>
+        </div>
+        <div class="branch-pr">
+          <div class="branch">
+            <i data-lucide="git-branch" class="icon"></i>
+            <span id="branchName">feature/auth-api-fix</span>
+          </div>
+          <button class="btn btn-pr">
+            <i data-lucide="git-pull-request" class="icon"></i>
+            Pull Request
+          </button>
+        </div>
+      </header>
+
+      <div class="autonomous-log" id="logFeed" aria-label="Autonomous Log">
+        <!-- dynamic log entries -->
+      </div>
+
+      <div class="discussion">
+        <div class="discussion-header">User Discussion / Clarifications</div>
+        <div class="discussion-input">
+          <input id="discussionInput" type="text" placeholder="Add a clarification for Atlas..." />
+          <button id="discussionSend" class="btn btn-secondary">
+            <i data-lucide="send" class="icon"></i>
+            Send
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Panel: Code / Diff -->
+    <section class="panel-center">
+      <div class="code-header">
+        <div class="tabs" role="tablist" aria-label="Editor Tabs">
+          <button class="tab active" data-tab="diff" role="tab" aria-selected="true">Diff</button>
+          <button class="tab" data-tab="source" role="tab" aria-selected="false">Source</button>
+          <button class="tab" data-tab="tests" role="tab" aria-selected="false">Tests</button>
+        </div>
+        <div class="file-path">
+          <i data-lucide="file-code-2" class="icon"></i>
+          <span id="filePath">apps/api/src/modules/metrics/metrics.controller.ts</span>
+        </div>
+      </div>
+
+      <div class="editor-viewport">
+        <!-- Diff View -->
+        <div id="diffView" class="view view-diff" aria-live="polite"></div>
+
+        <!-- Source View -->
+        <pre id="sourceView" class="view view-source hidden"><code class="code-block" id="sourceCode"></code></pre>
+
+        <!-- Tests View -->
+        <div id="testsView" class="view view-tests hidden">
+          <div class="test-summary" id="testSummary"></div>
+          <pre class="test-output" id="testOutput"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Vertical Tool Bar -->
+    <nav class="tool-nav" aria-label="Tools">
+      <button class="tool-btn active" data-tool="activity" title="Activity Log">
+        <i data-lucide="list"></i>
+      </button>
+      <button class="tool-btn" data-tool="files" title="File Explorer">
+        <i data-lucide="folder"></i>
+      </button>
+      <button class="tool-btn" data-tool="terminal" title="Debugger / Terminal">
+        <i data-lucide="terminal"></i>
+      </button>
+      <button class="tool-btn" data-tool="integrations" title="Integrations">
+        <i data-lucide="link"></i>
+      </button>
+      <button class="tool-btn" data-tool="settings" title="Settings">
+        <i data-lucide="settings"></i>
+      </button>
+    </nav>
+
+    <div id="toolDrawer" class="tool-drawer hidden" aria-label="Tool Drawer">
+      <!-- Drawer content populated dynamically -->
+    </div>
+
+    <!-- Bottom Input Bar -->
+    <div class="bottom-bar">
+      <div class="input-area">
+        <textarea id="mainInput" placeholder="Type, paste or import your task here..."></textarea>
+      </div>
+      <div class="controls">
+        <button class="mode-btn" data-mode="quick">Quick</button>
+        <button class="mode-btn" data-mode="think">Think</button>
+        <button class="mode-btn primary" data-mode="run">Run on Atlas</button>
+        <div class="divider"></div>
+        <button class="icon-btn" title="Mic">
+          <i data-lucide="mic"></i>
+        </button>
+        <button class="icon-btn" title="Web">
+          <i data-lucide="globe"></i>
+        </button>
+        <button class="icon-btn" title="Command">
+          <i data-lucide="code"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    // Initialize icons after DOM
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
