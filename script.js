@@ -711,13 +711,13 @@ function setupToolDrawer() {
             <input id="changedFilesFilter" type="text" placeholder="Filter files..." style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:8px;" />
             <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
               <label style="display:inline-flex;align-items:center;gap:6px;">
-                <input id="filterAdded" type="checkbox" /> <span class="success">Added</span>
+                <input id="filterAdded" type="checkbox" /> <span class="success">Added</span> <span class="muted" id="countAdded"></span>
               </label>
               <label style="display:inline-flex;align-items:center;gap:6px;">
-                <input id="filterModified" type="checkbox" /> <span style="color: var(--accent)">Modified</span>
+                <input id="filterModified" type="checkbox" /> <span style="color: var(--accent)">Modified</span> <span class="muted" id="countModified"></span>
               </label>
               <label style="display:inline-flex;align-items:center;gap:6px;">
-                <input id="filterRemoved" type="checkbox" /> <span class="error">Removed</span>
+                <input id="filterRemoved" type="checkbox" /> <span class="error">Removed</span> <span class="muted" id="countRemoved"></span>
               </label>
             </div>
           </div>
@@ -740,11 +740,22 @@ function setupToolDrawer() {
           if (!listEl) return;
           listEl.innerHTML = "";
           const q = (filterEl && filterEl.value.toLowerCase()) || "";
-          const files = state.diffFiles
+          const filteredBySearch = state.diffFiles
             .slice()
             .sort((a, b) => a.filename.localeCompare(b.filename))
-            .filter(f => !q || f.filename.toLowerCase().includes(q))
-            .filter(f =>
+            .filter(f => !q || f.filename.toLowerCase().includes(q));
+          // Update per-status counts (based on search filter)
+          const ca = document.getElementById("countAdded");
+          const cm = document.getElementById("countModified");
+          const cr = document.getElementById("countRemoved");
+          const addedCount = filteredBySearch.filter(f => f.status === "added").length;
+          const modifiedCount = filteredBySearch.filter(f => f.status === "modified").length;
+          const removedCount = filteredBySearch.filter(f => f.status === "removed").length;
+          if (ca) ca.textContent = `(${addedCount})`;
+          if (cm) cm.textContent = `(${modifiedCount})`;
+          if (cr) cr.textContent = `(${removedCount})`;
+
+          const files = filteredBySearch.filter(f =>
               (state.showAdded && f.status === "added") ||
               (state.showModified && f.status === "modified") ||
               (state.showRemoved && f.status === "removed")

@@ -152,20 +152,31 @@ export default function ToolDrawer({
                   marginBottom: 8
                 }}
               />
-              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={showAdded} onChange={e => setShowAdded(e.target.checked)} />
-                  <span style={{ color: "var(--success)" }}>Added</span>
-                </label>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={showModified} onChange={e => setShowModified(e.target.checked)} />
-                  <span style={{ color: "var(--accent)" }}>Modified</span>
-                </label>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
-                  <span style={{ color: "var(--error)" }}>Removed</span>
-                </label>
-              </div>
+              {(() => {
+                const filteredBySearch = (diffFiles || []).filter(f => !q.trim() || f.filename.toLowerCase().includes(q.toLowerCase()));
+                const addedCount = filteredBySearch.filter(f => f.status === "added").length;
+                const modifiedCount = filteredBySearch.filter(f => f.status === "modified").length;
+                const removedCount = filteredBySearch.filter(f => f.status === "removed").length;
+                return (
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showAdded} onChange={e => setShowAdded(e.target.checked)} />
+                      <span style={{ color: "var(--success)" }}>Added</span>
+                      <span className="muted">({addedCount})</span>
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showModified} onChange={e => setShowModified(e.target.checked)} />
+                      <span style={{ color: "var(--accent)" }}>Modified</span>
+                      <span className="muted">({modifiedCount})</span>
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
+                      <span style={{ color: "var(--error)" }}>Removed</span>
+                      <span className="muted">({removedCount})</span>
+                    </label>
+                  </div>
+                );
+              })()}
             </div>
             <div className="tool-section file-list" style={{ maxHeight: "60vh", overflow: "auto" }}>
               {diffFiles
