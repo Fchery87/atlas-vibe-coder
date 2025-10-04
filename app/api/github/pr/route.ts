@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const { owner, repo, base: envBase } = getRepoEnv();
     const octokit = getOctokit();
     const pr = await createPullRequest(octokit, owner, repo, title, head, base || envBase, description, draft);
-    return NextResponse.json({ ...pr });
+    return NextResponse.json({ ...pr, head_sha: pr.head?.sha });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }

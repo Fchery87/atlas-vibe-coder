@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GitBranch, GitPullRequest, FileCode2, Mic, Globe, Code as CodeIcon } from "lucide-react";
 import AutonomousLog from "../components/AutonomousLog";
 import DiffViewer from "../components/DiffViewer";
 import ToolDrawer from "../components/ToolDrawer";
 import type { Comment, DiffFile, LogEntry, ToolKey } from "../lib/types";
+import { parseUnifiedPatch, mapLineToIndex } from "../lib/diff";
 
 function nowTs() {
   const d = new Date();
@@ -99,6 +100,10 @@ const initialLogs: LogEntry[] = [
   }
 ];
 
+function lsKey(pr: number | null, path: string) {
+  return `atlas_comments_pr_${pr ?? "none"}_path_${path}`;
+}
+
 export default function Page() {
   const [branch] = useState("feature/auth-api-fix");
   const [selectedPath, setSelectedPath] = useState<string>("apps/api/src/modules/metrics/metrics.controller.ts");
@@ -114,6 +119,14 @@ export default function Page() {
   const [prNumber, setPrNumber] = useState<number | null>(null);
   const [headSha, setHeadSha] = useState<string | null>(null);
 
+  // Derived: lines for selected file
+  const selectedPatch = useMemo(() => {
+    const f = diffFiles.find(df => df.filename === selectedPath);
+    return f?.patch || fallbackPatch;
+  }, [diffFiles, selectedPath]);
+  const lines = useMemo(() => parseUnifiedPatch(selectedPatch), [selectedPatch]);
+
+  // WebSocket logs
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_WS_URL;
     if (!url) return;
@@ -131,6 +144,7 @@ export default function Page() {
     }
   }, []);
 
+  // Load diff from GitHub
   useEffect(() => {
     async function load() {
       try {
@@ -153,6 +167,95 @@ export default function Page() {
     }
     load();
   }, [branch]);
+
+  // Load local comments when PR/path changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(lsKey(prNumber, selectedPath));
+      if (raw) {
+        const arr: Comment[] = JSON.parse(raw);
+        setComments(arr);
+      } else {
+        setComments([]);
+      }
+    } catch {
+      setComments([]);
+    }
+  }, [prNumber, selectedPath]);
+
+  // Pull GitHub and JIRA comments to sync
+  useEffect(() => {
+    async function syncRemote() {
+      if (!prNumber) return;
+      try {
+        const res = await fetch(`/api/github/comments?pull_number=${prNumber}`);
+        if (res.ok) {
+          const data = await res.json();
+          setHeadSha(data.head_sha || headSha);
+
+          const reviewComments = Array.isArray(data.review_comments) ? data.review_comments : [];
+          // Map anchored review comments to local indices
+          const mapped: Comment[] = [];
+          for (const rc of reviewComments) {
+            const path = rc.path as string | undefined;
+            const side = (rc.side as "LEFT" | "RIGHT") || "RIGHT";
+            const line = (rc.line as number | undefined) || undefined;
+            const body = (rc.body as string) || "";
+            if (path === selectedPath && typeof line === "number") {
+              const idx = mapLineToIndex(lines, side, line);
+              if (idx !== null) {
+                mapped.push({ lineIndex: idx, text: body });
+              }
+            }
+          }
+          // Merge with existing (local)
+          setComments(prev => {
+            const merged = [...prev, ...mapped];
+            // Dedup by text+lineIndex
+            const seen = new Set<string>();
+            return merged.filter(c => {
+              const k = `${c.lineIndex}|${c.text}`;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      // JIRA comments into log (optional)
+      const defaultIssueKey = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY;
+      if (defaultIssueKey) {
+        try {
+          const jr = await fetch(`/api/jira/comment?issueKey=${encodeURIComponent(defaultIssueKey)}`);
+          if (jr.ok) {
+            const jd = await jr.json();
+            const comments = Array.isArray(jd.comments) ? jd.comments : [];
+            for (const c of comments) {
+              if (c.body_text) {
+                setLogs(prev => [...prev, { kind: "user", title: "JIRA", text: c.body_text, ts: nowTs() }]);
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    syncRemote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prNumber, selectedPath, lines.length]);
+
+  // Persist comments to localStorage on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(lsKey(prNumber, selectedPath), JSON.stringify(comments));
+    } catch {
+      // ignore
+    }
+  }, [comments, prNumber, selectedPath]);
 
   function handleModeAction(nextMode: "quick" | "think" | "run") {
     setMode(nextMode);
@@ -192,24 +295,45 @@ export default function Page() {
     }
   }
 
-  function onAddComment(payload: { index: number; text: string; line: number; side: "LEFT" | "RIGHT"; path: string }) {
+  async function onAddComment(payload: { index: number; text: string; line: number; side: "LEFT" | "RIGHT"; path: string }) {
     const { index, text } = payload;
     setComments(prev => [...prev, { lineIndex: index, text }]);
     setLogs(prev => [...prev, { kind: "user", title: "User Review", items: [`Comment on line ${index + 1}`], text, ts: nowTs() }]);
 
+    // Persist local immediately
+    try {
+      localStorage.setItem(lsKey(prNumber, selectedPath), JSON.stringify([...comments, { lineIndex: index, text }]));
+    } catch {}
+
+    // Sync with GitHub PR
     if (prNumber && headSha) {
-      fetch("/api/github/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pull_number: prNumber,
-          comment_body: text,
-          path: payload.path,
-          commit_id: headSha,
-          line: payload.line,
-          side: payload.side
-        })
-      }).catch(() => {});
+      try {
+        await fetch("/api/github/comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pull_number: prNumber,
+            comment_body: text,
+            path: payload.path,
+            commit_id: headSha,
+            line: payload.line,
+            side: payload.side
+          })
+        });
+      } catch {}
+    }
+
+    // Sync with JIRA (optional)
+    const defaultIssueKey = process.env.NEXT_PUBLIC_DEFAULT_JIRA_ISSUE_KEY;
+    if (defaultIssueKey) {
+      try {
+        await fetch("/api/jira/comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ issueKey: defaultIssueKey, text })
+        });
+        setLogs(prev => [...prev, { kind: "executing", title: "JIRA", text: `Posted comment to ${defaultIssueKey}`, ts: nowTs() }]);
+      } catch {}
     }
   }
 
@@ -222,7 +346,9 @@ export default function Page() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setPrNumber(data.number || data.pull_number || null);
+      const prNum = data.number || data.pull_number || null;
+      setPrNumber(prNum);
+      setHeadSha(data.head_sha || data.head?.sha || headSha);
       setLogs(prev => [...prev, { kind: "executing", title: "PR", text: `Created PR #${data.number}`, ts: nowTs() }]);
     } catch (err) {
       setLogs(prev => [...prev, { kind: "executing", title: "PR Error", text: String(err), ts: nowTs() }]);
