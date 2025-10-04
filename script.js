@@ -646,15 +646,19 @@ function setupCenterSidebarHandlers() {
 
 // Simulated remote refresh (just re-renders and appends a tick to first comment)
 function updateLastRefreshed() {
-  const el = document.getElementById("lastRefreshed");
-  if (el) el.textContent = nowTs();
+  const ts = nowTs();
+  const el1 = document.getElementById("lastRefreshed");
+  if (el1) el1.textContent = ts;
+  const el2 = document.getElementById("drawerLastRefreshed");
+  if (el2) el2.textContent = ts;
 }
 
 function refreshRemote() {
   if (state.prIssueComments.length) {
     state.prIssueComments[0].body = `${state.prIssueComments[0].body} · refreshed ${nowTs()}`;
   }
- }
+  updateLastRefreshed();
+}
 
 // Auto-refresh configuration
 function applyAutoRefresh() {
@@ -703,6 +707,140 @@ function setupToolDrawer() {
             <div>${state.branch}</div>
           </div>
         `;
+        drawer.classList.remove("hidden");
+      } else if (tool === "comments") {
+        drawer.innerHTML = `
+          <div class="tool-section">
+            <h4>PR Comments</h4>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+              <span class="muted" style="font-size:11px;">Last refreshed: <span id="drawerLastRefreshed">-</span></span>
+              <div style="display:inline-flex;gap:8px;">
+                <button id="drawerRefreshBtn" class="btn" title="Refresh comments">Refresh</button>
+                <button id="drawerPauseBtn" class="btn" title="Pause/Resume Auto-refresh">${state.autoRefreshEnabled ? "Pause" : "Resume"}</button>
+              </div>
+            </div>
+            <input id="drawerCommentsFilter" placeholder="Filter comments…" style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:6px;" />
+            <div id="drawerPrCommentsList" class="comments-list"></div>
+          </div>
+          <div class="tool-section">
+            <h4>Review Comments</h4>
+            <input id="drawerReviewCommentsFilter" placeholder="Filter review comments…" style="width:100%;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:6px;" />
+            <div id="drawerReviewCommentsList" class="comments-list"></div>
+          </div>
+        `;
+        const renderLists = () => {
+          const prList = document.getElementById("drawerPrCommentsList");
+          const rcList = document.getElementById("drawerReviewCommentsList");
+          const q1 = (document.getElementById("drawerCommentsFilter") || { value: "" }).value.toLowerCase?.() || "";
+          const q2 = (document.getElementById("drawerReviewCommentsFilter") || { value: "" }).value.toLowerCase?.() || "";
+
+          if (prList) {
+            prList.innerHTML = "";
+            const items = state.prIssueComments.filter(
+              c =>
+                !q1 ||
+                (c.body || "").toLowerCase().includes(q1) ||
+                (c.author || "").toLowerCase().includes(q1)
+            );
+            if (!items.length) {
+              const div = document.createElement("div");
+              div.className = "muted";
+              div.textContent = "No PR discussion yet";
+              prList.appendChild(div);
+            } else {
+              items.forEach(c => {
+                const card = document.createElement("div");
+                card.className = "comment-card";
+                const when = c.createdAt ? new Date(c.createdAt).toLocaleString() : "";
+                card.innerHTML = `
+                  <div class="comment-meta">
+                    <span class="author">${escapeHtml(c.author || "Unknown")}</span>
+                    <span>
+                      ${when ? `<span class="time" style="margin-right:8px;">${escapeHtml(when)}</span>` : ""}
+                      ${c.url ? `<a href="${c.url}" target="_blank" rel="noreferrer" class="muted" style="text-decoration:underline;">View</a>` : ""}
+                    </span>
+                  </div>
+                  <div class="comment-body">${escapeHtml(c.body || "")}</div>
+                `;
+                prList.appendChild(card);
+              });
+            }
+          }
+
+          if (rcList) {
+            rcList.innerHTML = "";
+            const items = (state.reviewComments || []).filter(
+              r =>
+                !q2 ||
+                (r.body || "").toLowerCase().includes(q2) ||
+                (r.author || "").toLowerCase().includes(q2) ||
+                (r.path || "").toLowerCase().includes(q2) ||
+                String(r.line || "").includes(q2)
+            );
+            if (!items.length) {
+              const div = document.createElement("div");
+              div.className = "muted";
+              div.textContent = "No review comments yet";
+              rcList.appendChild(div);
+            } else {
+              items.forEach(r => {
+                const card = document.createElement("div");
+                card.className = "comment-card";
+                const when = r.createdAt ? new Date(r.createdAt).toLocaleString() : "";
+                card.innerHTML = `
+                  <div class="comment-meta">
+                    <span class="author">${escapeHtml(r.author || "Reviewer")}</span>
+                    <span>
+                      ${when ? `<span class="time" style="margin-right:8px;">${escapeHtml(when)}</span>` : ""}
+                      <button class="btn" data-open-path="${escapeHtml(r.path)}" style="height:22px;padding:0 8px;">View file</button>
+                    </span>
+                  </div>
+                  <div class="comment-body">
+                    <div class="muted" style="font-size:12px;margin-bottom:4px;">${escapeHtml(r.path)}:${escapeHtml(String(r.line))} ${r.side ? `(${escapeHtml(r.side)})` : ""}</div>
+                    ${escapeHtml(r.body || "")}
+                  </div>
+                `;
+                rcList.appendChild(card);
+              });
+
+              rcList.querySelectorAll("button[data-open-path]").forEach(btn => {
+                btn.addEventListener("click", () => {
+                  const p = btn.getAttribute("data-open-path");
+                  if (!p) return;
+                  state.filePath = p;
+                  const fp = document.getElementById("filePath");
+                  if (fp) fp.textContent = state.filePath;
+                  renderDiff();
+                });
+              });
+            }
+          }
+        };
+        renderLists();
+        updateLastRefreshed();
+        const refreshBtn = document.getElementById("drawerRefreshBtn");
+        const pauseBtn = document.getElementById("drawerPauseBtn");
+        refreshBtn && refreshBtn.addEventListener("click", () => {
+          refreshRemote();
+          renderLists();
+        });
+        if (pauseBtn) {
+          const updateLabel = () => {
+            pauseBtn.textContent = state.autoRefreshEnabled ? "Pause" : "Resume";
+            pauseBtn.title = state.autoRefreshEnabled ? "Pause Auto-refresh" : "Resume Auto-refresh";
+          };
+          updateLabel();
+          pauseBtn.addEventListener("click", () => {
+            state.autoRefreshEnabled = !state.autoRefreshEnabled;
+            try { localStorage.setItem("atlas_auto_refresh_enabled", state.autoRefreshEnabled ? "1" : "0"); } catch {}
+            applyAutoRefresh();
+            updateLabel();
+          });
+        }
+        const q1El = document.getElementById("drawerCommentsFilter");
+        const q2El = document.getElementById("drawerReviewCommentsFilter");
+        q1El && q1El.addEventListener("input", renderLists);
+        q2El && q2El.addEventListener("input", renderLists);
         drawer.classList.remove("hidden");
       } else if (tool === "changed") {
         drawer.innerHTML = `
@@ -966,8 +1104,6 @@ document.addEventListener("DOMContentLoaded", () => {
   renderLogFeed();
 
   renderDiff();
-  renderCenterSidebar();
-  setupCenterSidebarHandlers();
   setupTabs();
   setupModes();
   setupDiscussion();
