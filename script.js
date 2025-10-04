@@ -4,6 +4,8 @@
  * - Three-panel layout (Left: Autonomous Log, Center: Code/Diff, Right: Tools)
  * - Bottom input bar with modes: Quick, Think, Run on Atlas
  * - Inline diff viewer with comment capability
+ * - Center sidebar with Changed Files and PR (issue) comments
+ * - Settings: JIRA key per task, Auto-refresh toggle/interval (simulated)
  */
 
 const state = {
@@ -12,7 +14,21 @@ const state = {
   branch: "feature/auth-api-fix",
   filePath: "apps/api/src/modules/metrics/metrics.controller.ts",
   comments: [],
-  logs: []
+  logs: [],
+  // New
+  diffFiles: [
+    { filename: "apps/api/src/modules/metrics/metrics.controller.ts", status: "modified", additions: 3, deletions: 2 },
+    { filename: "apps/web/src/lib/api.ts", status: "modified", additions: 5, deletions: 1 },
+    { filename: "prometheus/prometheus.yml", status: "added", additions: 27, deletions: 0 }
+  ],
+  prIssueComments: [
+    { id: 101, author: "reviewer-1", body: "Can we rename X-Request-ID to X-Request-Id consistently?", createdAt: new Date().toISOString(), url: "#" },
+    { id: 102, author: "teammate-2", body: "Looks good. Please confirm the JWT attach logic for subrequests.", createdAt: new Date().toISOString(), url: "#" }
+  ],
+  jiraIssueKey: "",
+  autoRefreshEnabled: true,
+  refreshIntervalSec: 30,
+  _refreshTimer: null
 };
 
 // Sample source (for Source tab)
@@ -184,6 +200,7 @@ function renderLogFeed() {
 // Render Diff
 function renderDiff() {
   const wrap = document.getElementById("diffView");
+  if (!wrap) return;
   wrap.innerHTML = "";
 
   const header = document.createElement("div");
@@ -329,6 +346,8 @@ function updateViews() {
   const diffView = document.getElementById("diffView");
   const sourceView = document.getElementById("sourceView");
   const testsView = document.getElementById("testsView");
+  if (!diffView || !sourceView || !testsView) return;
+
   diffView.classList.add("hidden");
   sourceView.classList.add("hidden");
   testsView.classList.add("hidden");
@@ -354,7 +373,7 @@ function setupModes() {
 }
 
 function handleModeAction(mode) {
-  const input = document.getElementById("mainInput").value.trim();
+  const input = (document.getElementById("mainInput") || { value: "" }).value.trim?.() || "";
   if (mode === "think") {
     // Verbose planning before acting
     state.logs.push({
@@ -427,6 +446,7 @@ function showTests() {
 function setupDiscussion() {
   const inp = document.getElementById("discussionInput");
   const send = document.getElementById("discussionSend");
+  if (!inp || !send) return;
   send.addEventListener("click", () => {
     const val = inp.value.trim();
     if (!val) return;
@@ -440,6 +460,121 @@ function setupDiscussion() {
     inp.value = "";
     renderLogFeed();
   });
+}
+
+// Center sidebar: Changed files + PR comments
+function statusSymbol(status) {
+  if (status === "added") return "+";
+  if (status === "removed") return "-";
+  return "M";
+}
+
+function renderCenterSidebar() {
+  const filesList = document.getElementById("changedFilesList");
+  const prList = document.getElementById("prCommentsList");
+  const filesFilter = (document.getElementById("filesFilter") || { value: "" }).value.toLowerCase?.() || "";
+  const commentsFilter = (document.getElementById("commentsFilter") || { value: "" }).value.toLowerCase?.() || "";
+
+  if (filesList) {
+    filesList.innerHTML = "";
+    const files = state.diffFiles
+      .slice()
+      .sort((a, b) => a.filename.localeCompare(b.filename))
+      .filter(f => !filesFilter || f.filename.toLowerCase().includes(filesFilter));
+
+    if (files.length === 0) {
+      const div = document.createElement("div");
+      div.className = "muted";
+      div.textContent = "No changes";
+      filesList.appendChild(div);
+    } else {
+      files.forEach(f => {
+        const btn = document.createElement("button");
+        btn.className = `file-row ${state.filePath === f.filename ? "active" : ""}`;
+        btn.title = f.filename;
+        btn.innerHTML = `
+          <span class="status ${f.status}">${statusSymbol(f.status)}</span>
+          <span class="name">${f.filename}</span>
+          <span class="metrics"><span class="add">+${f.additions || 0}</span> <span class="del">-${f.deletions || 0}</span></span>
+        `;
+        btn.addEventListener("click", () => {
+          state.filePath = f.filename;
+          const fp = document.getElementById("filePath");
+          if (fp) fp.textContent = state.filePath;
+          renderCenterSidebar();
+          renderDiff();
+          if (window.lucide) window.lucide.createIcons();
+        });
+        filesList.appendChild(btn);
+      });
+    }
+  }
+
+  if (prList) {
+    prList.innerHTML = "";
+    const items = state.prIssueComments.filter(
+      c =>
+        !commentsFilter ||
+        (c.body || "").toLowerCase().includes(commentsFilter) ||
+        (c.author || "").toLowerCase().includes(commentsFilter)
+    );
+
+    if (items.length === 0) {
+      const div = document.createElement("div");
+      div.className = "muted";
+      div.textContent = "No PR discussion yet";
+      prList.appendChild(div);
+    } else {
+      items.forEach(c => {
+        const card = document.createElement("div");
+        card.className = "comment-card";
+        const when = c.createdAt ? new Date(c.createdAt).toLocaleString() : "";
+        card.innerHTML = `
+          <div class="comment-meta">
+            <span class="author">${escapeHtml(c.author || "Unknown")}</span>
+            <span>
+              ${when ? `<span class="time" style="margin-right:8px;">${escapeHtml(when)}</span>` : ""}
+              ${c.url ? `<a href="${c.url}" target="_blank" rel="noreferrer" class="muted" style="text-decoration:underline;">View</a>` : ""}
+            </span>
+          </div>
+          <div class="comment-body">${escapeHtml(c.body || "")}</div>
+        `;
+        prList.appendChild(card);
+      });
+    }
+  }
+}
+
+function setupCenterSidebarHandlers() {
+  const refreshBtn = document.getElementById("refreshPRCommentsBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      refreshRemote();
+    });
+  }
+  const filesFilter = document.getElementById("filesFilter");
+  const commentsFilter = document.getElementById("commentsFilter");
+  filesFilter && filesFilter.addEventListener("input", renderCenterSidebar);
+  commentsFilter && commentsFilter.addEventListener("input", renderCenterSidebar);
+}
+
+// Simulated remote refresh (just re-renders and appends a tick to first comment)
+function refreshRemote() {
+  if (state.prIssueComments.length) {
+    state.prIssueComments[0].body = `${state.prIssueComments[0].body} · refreshed ${nowTs()}`;
+  }
+  renderCenterSidebar();
+}
+
+// Auto-refresh configuration
+function applyAutoRefresh() {
+  if (state._refreshTimer) {
+    clearInterval(state._refreshTimer);
+    state._refreshTimer = null;
+  }
+  if (!state.autoRefreshEnabled) return;
+  const ms = Math.max(5, Number(state.refreshIntervalSec) || 30) * 1000;
+  state._refreshTimer = setInterval(refreshRemote, ms);
 }
 
 // Tool drawer
@@ -518,8 +653,56 @@ ${testOutputText}</pre>
               <option>Aggressive</option>
             </select>
             <div class="muted" style="margin-top:8px;">Logging: Verbose</div>
+
+            <div style="height:8px;"></div>
+            <label class="muted" style="display:block;margin-bottom:6px;">JIRA Issue Key (per task)</label>
+            <input id="jiraKeyInput" type="text" placeholder="e.g. ENG-123"
+              style="width:100%;height:34px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;margin-bottom:8px;" />
+
+            <div class="muted" style="display:block;margin-bottom:6px;">Auto-refresh PR/JIRA comments</div>
+            <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;">
+              <label style="display:inline-flex;align-items:center;gap:8px;">
+                <input id="autoRefreshToggle" type="checkbox" />
+                <span class="muted">Enabled</span>
+              </label>
+              <div></div>
+              <label class="muted" style="display:inline-flex;align-items:center;gap:6px;">
+                Interval (sec)
+                <input id="refreshIntervalInput" type="number" min="5" step="5"
+                  style="width:80px;height:30px;border-radius:8px;border:1px solid #1f2937;background:#0f1421;color:#e5e7eb;padding:0 8px;" />
+              </label>
+            </div>
           </div>
         `;
+        // Prefill values
+        const jiraEl = document.getElementById("jiraKeyInput");
+        const autoEl = document.getElementById("autoRefreshToggle");
+        const intEl = document.getElementById("refreshIntervalInput");
+        if (jiraEl) jiraEl.value = state.jiraIssueKey || "";
+        if (autoEl) autoEl.checked = !!state.autoRefreshEnabled;
+        if (intEl) intEl.value = String(state.refreshIntervalSec || 30);
+
+        // Bind changes
+        jiraEl && jiraEl.addEventListener("input", () => {
+          state.jiraIssueKey = jiraEl.value.trim();
+          try { localStorage.setItem("atlas_jira_issue_key", state.jiraIssueKey); } catch {}
+        });
+        autoEl && autoEl.addEventListener("change", () => {
+          state.autoRefreshEnabled = !!autoEl.checked;
+          try { localStorage.setItem("atlas_auto_refresh_enabled", state.autoRefreshEnabled ? "1" : "0"); } catch {}
+          applyAutoRefresh();
+        });
+        intEl && intEl.addEventListener("change", () => {
+          const v = parseInt(intEl.value || "0", 10);
+          if (Number.isFinite(v) && v >= 5) {
+            state.refreshIntervalSec = v;
+            try { localStorage.setItem("atlas_refresh_interval_sec", String(v)); } catch {}
+            applyAutoRefresh();
+          } else {
+            intEl.value = String(state.refreshIntervalSec || 30);
+          }
+        });
+
         drawer.classList.remove("hidden");
       }
       if (window.lucide) window.lucide.createIcons();
@@ -529,22 +712,51 @@ ${testOutputText}</pre>
 
 // Initialize
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("branchName").textContent = state.branch;
-  document.getElementById("filePath").textContent = state.filePath;
-  document.getElementById("sourceCode").textContent = sampleSource;
-  document.getElementById("testSummary").textContent = testSummaryText;
-  document.getElementById("testOutput").textContent = testOutputText;
+  // Load persisted settings
+  try {
+    const savedKey = localStorage.getItem("atlas_jira_issue_key");
+    if (savedKey) state.jiraIssueKey = savedKey;
+    const savedAuto = localStorage.getItem("atlas_auto_refresh_enabled");
+    if (savedAuto !== null) state.autoRefreshEnabled = savedAuto === "1" || savedAuto === "true";
+    const savedInt = localStorage.getItem("atlas_refresh_interval_sec");
+    if (savedInt) {
+      const v = parseInt(savedInt, 10);
+      if (Number.isFinite(v) && v >= 5) state.refreshIntervalSec = v;
+    }
+  } catch {}
+
+  const branchEl = document.getElementById("branchName");
+  branchEl && (branchEl.textContent = state.branch);
+  const filePathEl = document.getElementById("filePath");
+  filePathEl && (filePathEl.textContent = state.filePath);
+  const srcEl = document.getElementById("sourceCode");
+  srcEl && (srcEl.textContent = sampleSource);
+  const sumEl = document.getElementById("testSummary");
+  sumEl && (sumEl.textContent = testSummaryText);
+  const outEl = document.getElementById("testOutput");
+  outEl && (outEl.textContent = testOutputText);
 
   // Seed logs
   state.logs = initialLogs.slice();
   renderLogFeed();
 
   renderDiff();
+  renderCenterSidebar();
+  setupCenterSidebarHandlers();
   setupTabs();
   setupModes();
   setupDiscussion();
   setupToolDrawer();
   updateViews();
+  applyAutoRefresh();
+
+  const prBtn = document.getElementById("createPrBtn");
+  prBtn && prBtn.addEventListener("click", () => {
+    // Simulate PR creation
+    const prNum = Math.floor(Math.random() * 900) + 100;
+    state.logs.push({ kind: "executing", title: "PR", text: `Created PR #${prNum}`, ts: nowTs() });
+    renderLogFeed();
+  });
 });
 
 // Close popover when clicking outside

@@ -25,7 +25,7 @@
             <i data-lucide="git-branch" class="icon"></i>
             <span id="branchName">feature/auth-api-fix</span>
           </div>
-          <button class="btn btn-pr">
+          <button class="btn btn-pr" id="createPrBtn">
             <i data-lucide="git-pull-request" class="icon"></i>
             Pull Request
           </button>
@@ -48,7 +48,7 @@
       </div>
     </aside>
 
-    <!-- Center Panel: Code / Diff -->
+    <!-- Center Panel: Code / Diff with Changed Files & PR Comments Sidebar -->
     <section class="panel-center">
       <div class="code-header">
         <div class="tabs" role="tablist" aria-label="Editor Tabs">
@@ -62,17 +62,44 @@
         </div>
       </div>
 
-      <div class="editor-viewport">
-        <!-- Diff View -->
-        <div id="diffView" class="view view-diff" aria-live="polite"></div>
+      <div class="center-body">
+        <!-- Changed Files + PR Comments sidebar -->
+        <aside class="center-sidebar" aria-label="Changed files and PR comments">
+          <div class="sidebar-section">
+            <div class="section-title">Changed Files</div>
+            <input id="filesFilter" placeholder="Filter files…" />
+            <div id="changedFilesList" class="files-list">
+              <!-- populated by script -->
+            </div>
+          </div>
 
-        <!-- Source View -->
-        <pre id="sourceView" class="view view-source hidden"><code class="code-block" id="sourceCode"></code></pre>
+          <div class="sidebar-section">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+              <span>PR Comments</span>
+              <button id="refreshPRCommentsBtn" class="btn" title="Refresh comments">Refresh</button>
+            </div>
+            <input id="commentsFilter" placeholder="Filter comments…" />
+            <div id="prCommentsList" class="comments-list">
+              <!-- populated by script -->
+            </div>
+          </div>
+        </aside>
 
-        <!-- Tests View -->
-        <div id="testsView" class="view view-tests hidden">
-          <div class="test-summary" id="testSummary"></div>
-          <pre class="test-output" id="testOutput"></pre>
+        <!-- Main editor content -->
+        <div class="center-content">
+          <div class="editor-viewport">
+            <!-- Diff View -->
+            <div id="diffView" class="view view-diff" aria-live="polite"></div>
+
+            <!-- Source View -->
+            <pre id="sourceView" class="view view-source hidden"><code class="code-block" id="sourceCode"></code></pre>
+
+            <!-- Tests View -->
+            <div id="testsView" class="view view-tests hidden">
+              <div class="test-summary" id="testSummary"></div>
+              <pre class="test-output" id="testOutput"></pre>
+            </div>
+          </div>
         </div>
       </div>
     </section>
