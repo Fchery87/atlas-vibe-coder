@@ -1,13 +1,29 @@
 import { Octokit } from "@octokit/rest";
+import { cookies } from "next/headers";
 
 function required(name: string, value: string | undefined) {
   if (!value) throw new Error(`Missing env: ${name}`);
   return value;
 }
 
+/**
+ * Server-side Octokit using a bot/token from env.
+ * Useful for app-level operations.
+ */
 export function getOctokit() {
   const token = required("GITHUB_TOKEN", process.env.GITHUB_TOKEN);
   return new Octokit({ auth: token });
+}
+
+/**
+ * Per-user Octokit using OAuth token stored in cookie (gh_access_token).
+ * Falls back to env token if user token absent.
+ */
+export function getUserOctokit() {
+  const userToken = cookies().get("gh_access_token")?.value;
+  const auth = userToken || process.env.GITHUB_TOKEN;
+  if (!auth) throw new Error("Missing GitHub auth (no user token, no env token).");
+  return new Octokit({ auth });
 }
 
 export function getRepoEnv() {

@@ -57,6 +57,14 @@ export default function ToolDrawer({
   const [qc, setQc] = useState("");
   const [qr, setQr] = useState("");
 
+  // GitHub integration (OAuth per-user)
+  const [ghUser, setGhUser] = useState<any>(null);
+  const [ghRepos, setGhRepos] = useState<any[]>([]);
+  const [repoQ, setRepoQ] = useState<string>("");
+  const [selectedRepo, setSelectedRepo] = useState<any | null>(null);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>("");
+
   // Load persisted filters
   useEffect(() => {
     try {
@@ -84,7 +92,12 @@ export default function ToolDrawer({
     if (tool !== "files") return;
     (async () => {
       try {
-        const res = await fetch(`/api/github/files?branch=${encodeURIComponent(branch)}`);
+        const repoFull = typeof window !== "undefined" ? localStorage.getItem("atlas_repo_full_name") : null;
+        const baseBranch = typeof window !== "undefined" ? localStorage.getItem("atlas_base_branch") : null;
+        const params = new URLSearchParams();
+        params.set("branch", baseBranch || branch);
+        if (repoFull) params.set("full_name", repoFull);
+        const res = await fetch(`/api/github/files?${params.toString()}`);
         const data = await res.json();
         setTree(Array.isArray(data.tree) ? data.tree : []);
       } catch {
@@ -92,6 +105,23 @@ export default function ToolDrawer({
       }
     })();
   }, [tool, branch]);
+
+  // Load GitHub user on integrations tab open
+  useEffect(() => {
+    if (tool !== "integrations") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/github/user");
+        if (res.ok) {
+          setGhUser(await res.json());
+        } else {
+          setGhUser(null);
+        }
+      } catch {
+        setGhUser(null);
+      }
+    })();
+  }, [tool]);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return tree;
@@ -389,18 +419,149 @@ export default function ToolDrawer({
           </div>
         )}
         {tool === "integrations" && (
-          <div className="tool-section">
-            <h4>Integrations</h4>
-            <div className="muted">JIRA • Slack • GitHub</div>
-            <div style={{ marginTop: 8 }}>
-              <button className="btn" style={{ marginRight: 8 }}>
-                <LinkIcon className="icon" /> Connect GitHub
-              </button>
-              <button className="btn">
-                <LinkIcon className="icon" /> Connect Slack
-              </button>
+          <>
+            <div className="tool-section">
+              <h4>GitHub</h4>
+              {!ghUser ? (
+                <>
+                  <div className="muted">Connect your GitHub account to browse repos, select a project, and create PRs.</div>
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        // Start OAuth flow
+                        window.location.href = "/api/auth/github/authorize";
+                      }}
+                    >
+                      <LinkIcon className="icon" /> Connect GitHub
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="muted" style={{ marginBottom: 8 }}>
+                    Connected as <strong>{ghUser.login}</strong>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="text"
+                      value={repoQ}
+                      onChange={e => setRepoQ(e.target.value)}
+                      placeholder="Search repositories..."
+                      style={{
+                        width: "100%",
+                        height: 30,
+                        borderRadius: 8,
+                        border: "1px solid #1f2937",
+                        background: "#0f1421",
+                        color: "#e5e7eb",
+                        padding: "0 8px"
+                      }}
+                    />
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/github/repos");
+                          const data = await res.json();
+                          setGhRepos(Array.isArray(data.repos) ? data.repos : []);
+                        } catch {
+                          setGhRepos([]);
+                        }
+                      }}
+                    >
+                      Load repos
+                    </button>
+                  </div>
+
+                  <div className="tool-section file-list" style={{ maxHeight: "32vh", overflow: "auto", marginTop: 8 }}>
+                    {ghRepos
+                      .filter(r => !repoQ.trim() || (r.full_name || "").toLowerCase().includes(repoQ.toLowerCase()))
+                      .slice(0, 100)
+                      .map(r => (
+                        <button
+                          key={r.id}
+                          className={`file-row ${selectedRepo?.full_name === r.full_name ? "active" : ""}`}
+                          title={r.full_name}
+                          onClick={async () => {
+                            setSelectedRepo(r);
+                            setBranches([]);
+                            setSelectedBranch("");
+                            try {
+                              const res = await fetch(`/api/github/branches?full_name=${encodeURIComponent(r.full_name)}`);
+                              const data = await res.json();
+                              const bs = Array.isArray(data.branches) ? data.branches : [];
+                              setBranches(bs);
+                              setSelectedBranch(r.default_branch || bs[0] || "");
+                            } catch {
+                              setBranches([]);
+                            }
+                          }}
+                          style={{ width: "100%", textAlign: "left" }}
+                        >
+                          <span className="name">{r.full_name}</span>
+                          <span className="metrics">{r.private ? "private" : "public"}</span>
+                        </button>
+                      ))}
+                    {ghRepos.length === 0 && <div className="muted">No repositories loaded</div>}
+                  </div>
+
+                  {selectedRepo && (
+                    <div className="tool-section">
+                      <h4>Workspace</h4>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "center", gap: 8 }}>
+                        <span className="muted">Repo</span>
+                        <div>{selectedRepo.full_name}</div>
+                        <span className="muted">Branch</span>
+                        <select
+                          value={selectedBranch}
+                          onChange={e => setSelectedBranch(e.target.value)}
+                          style={{
+                            height: 30,
+                            borderRadius: 8,
+                            border: "1px solid #1f2937",
+                            background: "#0f1421",
+                            color: "#e5e7eb",
+                            padding: "0 8px"
+                          }}
+                        >
+                          {branches.map(b => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        <button
+                          className="btn"
+                          onClick={() => {
+                            try {
+                              localStorage.setItem("atlas_repo_full_name", selectedRepo.full_name);
+                              localStorage.setItem("atlas_base_branch", selectedBranch || selectedRepo.default_branch || "main");
+                            } catch {}
+                            alert("Workspace set. This repo/branch will be used for diffs & PRs.");
+                          }}
+                        >
+                          Use this project
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          </div>
+
+            <div className="tool-section">
+              <h4>Other Integrations</h4>
+              <div className="muted">JIRA • Slack</div>
+              <div style={{ marginTop: 8 }}>
+                <button className="btn" style={{ marginRight: 8 }}>
+                  <LinkIcon className="icon" /> Connect Slack
+                </button>
+              </div>
+            </div>
+          </>
         )}
         {tool === "settings" && (
           <div className="tool-section">

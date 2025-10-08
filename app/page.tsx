@@ -253,7 +253,14 @@ export default function Page() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/github/diff?head=${encodeURIComponent(branch)}`);
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const repoFull = typeof window !== "undefined" ? localStorage.getItem("atlas_repo_full_name") : null;
+        const baseBranch = typeof window !== "undefined" ? localStorage.getItem("atlas_base_branch") : null;
+        const apiUrl = new URL(`${origin}/api/github/diff`);
+        apiUrl.searchParams.set("head", branch);
+        if (repoFull) apiUrl.searchParams.set("full_name", repoFull);
+        if (baseBranch) apiUrl.searchParams.set("base", baseBranch);
+        const res = await fetch(apiUrl.toString());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const files: DiffFile[] = data.files || [];
@@ -480,10 +487,16 @@ export default function Page() {
 
   async function createPullRequest() {
     try {
+      const repoFull = typeof window !== "undefined" ? localStorage.getItem("atlas_repo_full_name") : null;
+      const baseBranch = typeof window !== "undefined" ? localStorage.getItem("atlas_base_branch") : null;
+      const payload: any = { title: "Atlas: Implement Auth API Fix", head: branch };
+      if (repoFull) payload.full_name = repoFull;
+      if (baseBranch) payload.base = baseBranch;
+
       const res = await fetch("/api/github/pr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Atlas: Implement Auth API Fix", head: branch })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
